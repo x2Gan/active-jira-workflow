@@ -812,6 +812,22 @@ update_project_source() {
 
     git fetch origin "$REPO_BRANCH"
 
+    _file_mode_changed=0
+    if ! git diff --quiet; then
+      _diff_summary="$(git diff --summary)"
+      if [ -n "$_diff_summary" ] \
+        && [ -z "$(printf '%s\n' "$_diff_summary" | sed '/^ mode change /d')" ] \
+        && git -c core.fileMode=false diff --quiet --ignore-submodules --; then
+        _file_mode_changed=1
+        warn "检测到本地只有文件可执行权限变化，将忽略 file mode 后继续更新。"
+        git config core.fileMode false
+      else
+        warn "源码目录存在本地内容修改，未自动更新：$PROJECT_DIR"
+        git status --short
+        die "请先提交或暂存本地修改后再执行 update。"
+      fi
+    fi
+
     _remote_version="$(get_fetched_remote_project_version 2>/dev/null || true)"
     _remote_commit="$(get_fetched_remote_project_commit 2>/dev/null || true)"
     _current="$(git rev-parse HEAD)"
@@ -825,6 +841,9 @@ update_project_source() {
     elif git merge-base --is-ancestor "$_current" "$_remote"; then
       say "发现工程源码更新，正在执行 fast-forward pull。"
       git pull --ff-only origin "$REPO_BRANCH"
+      if [ "$_file_mode_changed" = "1" ]; then
+        git config core.fileMode false
+      fi
       _after_version="$(get_project_version_from_dir "$PROJECT_DIR" 2>/dev/null || true)"
       _after_commit="$(get_local_project_commit 2>/dev/null || true)"
       say "更新后源码版本：${_after_version:-unknown} (${_after_commit:-unknown})"

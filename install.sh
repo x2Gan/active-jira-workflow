@@ -16,7 +16,7 @@ set -eu
 ###############################################################################
 
 APP_NAME="${APP_NAME:-zeppos-jira}"
-INSTALLER_VERSION="${INSTALLER_VERSION:-0.2.1}"
+INSTALLER_VERSION="${INSTALLER_VERSION:-0.3.0}"
 REPO_URL="${REPO_URL:-https://github.com/active-ailab/zeppos-jira-workflow.git}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 RAW_BASE_URL="${RAW_BASE_URL:-https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/${REPO_BRANCH}}"
@@ -51,11 +51,18 @@ SKILL_INSTALL_DIR="${SKILL_INSTALL_DIR:-}"
 JIRA_SERVER="${JIRA_SERVER:-}"
 JIRA_ACCOUNT="${JIRA_ACCOUNT:-}"
 JIRA_API_TOKEN="${JIRA_API_TOKEN:-${JIRA_TOKEN:-${JIRA_PASSWORD:-}}}"
+JIRA_INSTALLATION="${JIRA_INSTALLATION:-}"
+JIRA_AUTH_TYPE="${JIRA_AUTH_TYPE:-}"
+JIRA_PROJECT="${JIRA_PROJECT:-}"
+JIRA_BOARD="${JIRA_BOARD:-}"
+JIRA_INIT_FORCE="${JIRA_INIT_FORCE:-1}"
+JIRA_INSECURE="${JIRA_INSECURE:-0}"
+INIT_JIRA_CLI="${INIT_JIRA_CLI:-1}"
 RUN_JIRA_INIT="${RUN_JIRA_INIT:-1}"
 INSTALL_JIRA_CLI="${INSTALL_JIRA_CLI:-1}"
 
-# Temporary switch: keep skill/netrc/jira init disabled while the rest of the
-# workflow is being iterated. jira-cli installation/update still runs.
+# Temporary switch: keep skill/launcher setup disabled while the rest of the
+# workflow is being iterated. jira-cli installation and init still run.
 SKIP_CONFIG_STEPS="${SKIP_CONFIG_STEPS:-${SKIP_POST_SOURCE_STEPS:-1}}"
 
 say() {
@@ -120,9 +127,16 @@ Environment:
   JIRA_SERVER             Jira 地址，例如：https://jira.example.com
   JIRA_ACCOUNT            Jira 账号
   JIRA_API_TOKEN          Jira 密码或 API Token，也兼容 JIRA_TOKEN/JIRA_PASSWORD
+  JIRA_INSTALLATION       Jira 类型：cloud 或 local，默认按 server 推断
+  JIRA_AUTH_TYPE          认证类型：basic、bearer 或 mtls，默认：basic
+  JIRA_PROJECT            默认 Jira 项目 key；为空则由 jira init 交互选择
+  JIRA_BOARD              默认 Jira board；为空则由 jira init 交互选择
+  JIRA_INIT_FORCE         是否覆盖已有 jira-cli 配置，默认：1
+  JIRA_INSECURE           是否跳过 TLS 证书校验，默认：0
+  INIT_JIRA_CLI           是否执行 jira-cli 初始化，默认：1
   INSTALL_JIRA_CLI        是否自动安装 jira-cli，默认：1；设为 0 跳过
-  RUN_JIRA_INIT           是否执行 jira init，默认：1；设为 0 跳过
-  SKIP_CONFIG_STEPS       临时开关：跳过 skill/netrc/jira init，默认：1
+  RUN_JIRA_INIT           兼容旧变量；设为 0 时跳过 jira-cli 初始化
+  SKIP_CONFIG_STEPS       临时开关：跳过 skill/launcher 配置，默认：1
   JIRA_CLI_LATEST_URL     jira-cli latest release URL，默认：GitHub releases/latest
   JIRA_CLI_INSTALL_URL    jira-cli 子安装脚本 raw URL
   JIRA_CLI_UPDATE_CMD     自定义 jira-cli 升级命令
@@ -345,6 +359,48 @@ normalize_jira_server() {
   printf '%s\n' "$1" | sed 's#/*$##'
 }
 
+infer_jira_installation() {
+  case "$1" in
+    *".atlassian.net"*)
+      printf '%s\n' "cloud"
+      ;;
+    *)
+      printf '%s\n' "local"
+      ;;
+  esac
+}
+
+normalize_jira_installation() {
+  case "$(printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]')" in
+    cloud)
+      printf '%s\n' "cloud"
+      ;;
+    local|server|onprem|on-prem|on-premise)
+      printf '%s\n' "local"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+normalize_jira_auth_type() {
+  case "$(printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]')" in
+    ""|basic|password)
+      printf '%s\n' "basic"
+      ;;
+    bearer|pat|token)
+      printf '%s\n' "bearer"
+      ;;
+    mtls)
+      printf '%s\n' "mtls"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 jira_host_from_url() {
   printf '%s\n' "$1" \
     | sed -e 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##' \
@@ -556,12 +612,6 @@ write_netrc() {
     printf '  login %s\n' "$_jira_account"
     printf '  password %s\n' "$_jira_password"
 
-    if [ "$_jira_server" != "$_jira_host" ]; then
-      printf 'machine %s\n' "$_jira_server"
-      printf '  login %s\n' "$_jira_account"
-      printf '  password %s\n' "$_jira_password"
-    fi
-
     printf '%s\n' "$_end"
   } >> "$_netrc"
 
@@ -569,22 +619,146 @@ write_netrc() {
   say "已写入 $_netrc，并设置权限为 600。"
 }
 
+jira_config_file_path() {
+  if [ -n "${JIRA_CONFIG_FILE:-}" ]; then
+    expand_user_path "$JIRA_CONFIG_FILE"
+    return 0
+  fi
+
+  if [ -n "${XDG_CONFIG_HOME:-}" ]; then
+    printf '%s\n' "$(expand_user_path "$XDG_CONFIG_HOME")/.jira/.config.yml"
+  else
+    printf '%s\n' "$HOME/.config/.jira/.config.yml"
+  fi
+}
+
+read_simple_yaml_value() {
+  _key="$1"
+  _file="$2"
+
+  sed -n "s/^[[:space:]]*${_key}:[[:space:]]*//p" "$_file" \
+    | sed -n '1{s/^["'\'']//;s/["'\'']$//;p;q;}'
+}
+
+sync_netrc_from_jira_config() {
+  _token="$1"
+  _fallback_server="$2"
+  _fallback_login="$3"
+  _config_file="$(jira_config_file_path)"
+
+  if [ ! -f "$_config_file" ]; then
+    return 0
+  fi
+
+  _configured_server="$(read_simple_yaml_value "server" "$_config_file" || true)"
+  _configured_login="$(read_simple_yaml_value "login" "$_config_file" || true)"
+
+  [ -n "$_configured_server" ] || _configured_server="$_fallback_server"
+  [ -n "$_configured_login" ] || _configured_login="$_fallback_login"
+
+  if [ -n "$_configured_server" ] && [ -n "$_configured_login" ] && [ -n "$_token" ]; then
+    write_netrc "$_configured_server" "$_configured_login" "$_token"
+  fi
+}
+
+resolve_jira_cli_init_config() {
+  if [ -n "$JIRA_SERVER" ]; then
+    _jira_server="$(normalize_jira_server "$JIRA_SERVER")"
+  else
+    _jira_server="$(prompt_required "请输入 Jira 服务器地址，例如 https://jira.example.com" "" "JIRA_SERVER")"
+    _jira_server="$(normalize_jira_server "$_jira_server")"
+  fi
+
+  if [ -n "$JIRA_INSTALLATION" ]; then
+    _jira_installation="$(normalize_jira_installation "$JIRA_INSTALLATION")" \
+      || die "JIRA_INSTALLATION 只能是 cloud 或 local。"
+  else
+    _default_installation="$(infer_jira_installation "$_jira_server")"
+    _jira_installation="$(prompt_required "请输入 Jira 类型 cloud/local" "$_default_installation" "JIRA_INSTALLATION")"
+    _jira_installation="$(normalize_jira_installation "$_jira_installation")" \
+      || die "Jira 类型只能是 cloud 或 local。"
+  fi
+
+  if [ -n "$JIRA_AUTH_TYPE" ]; then
+    _jira_auth_type="$(normalize_jira_auth_type "$JIRA_AUTH_TYPE")" \
+      || die "JIRA_AUTH_TYPE 只能是 basic、bearer 或 mtls。"
+  else
+    _jira_auth_type="$(prompt_required "请输入 Jira 认证类型 basic/bearer/mtls" "basic" "JIRA_AUTH_TYPE")"
+    _jira_auth_type="$(normalize_jira_auth_type "$_jira_auth_type")" \
+      || die "Jira 认证类型只能是 basic、bearer 或 mtls。"
+  fi
+
+  if [ -n "$JIRA_ACCOUNT" ]; then
+    _jira_account="$JIRA_ACCOUNT"
+  else
+    if [ "$_jira_installation" = "cloud" ]; then
+      _jira_account="$(prompt_required "请输入 Jira 登录邮箱" "" "JIRA_ACCOUNT")"
+    else
+      _jira_account="$(prompt_required "请输入 Jira 登录用户名" "" "JIRA_ACCOUNT")"
+    fi
+  fi
+
+  if [ "$_jira_auth_type" = "mtls" ]; then
+    _jira_password="${JIRA_API_TOKEN:-}"
+  elif [ -n "$JIRA_API_TOKEN" ]; then
+    _jira_password="$JIRA_API_TOKEN"
+  else
+    _jira_password="$(prompt_secret "请输入 Jira 密码或 API Token/PAT" "JIRA_API_TOKEN")"
+  fi
+}
+
 run_jira_init() {
-  if is_disabled "$RUN_JIRA_INIT"; then
-    warn "已按 RUN_JIRA_INIT=0 跳过 jira init。"
+  if is_disabled "$INIT_JIRA_CLI" || is_disabled "$RUN_JIRA_INIT"; then
+    warn "已按 INIT_JIRA_CLI=0 或 RUN_JIRA_INIT=0 跳过 jira init。"
     return 0
   fi
 
   if ! has_cmd jira; then
-    warn "找不到 jira 命令，跳过 jira init。"
-    return 0
+    die "找不到 jira 命令，无法执行 jira init。"
   fi
 
-  if [ -t 0 ] && [ -t 1 ]; then
-    say "准备执行 jira init。请按提示选择 Jira 类型、认证类型、项目等信息。"
-    jira init
-  else
-    warn "当前不是交互式终端，跳过 jira init。请稍后手动执行：jira init"
+  resolve_jira_cli_init_config
+
+  if [ "$_jira_auth_type" != "mtls" ]; then
+    write_netrc "$_jira_server" "$_jira_account" "$_jira_password"
+    JIRA_API_TOKEN="$_jira_password"
+    export JIRA_API_TOKEN
+  fi
+
+  JIRA_AUTH_TYPE="$_jira_auth_type"
+  export JIRA_AUTH_TYPE
+
+  set -- init \
+    --installation "$_jira_installation" \
+    --server "$_jira_server" \
+    --login "$_jira_account" \
+    --auth-type "$_jira_auth_type"
+
+  if ! is_disabled "$JIRA_INIT_FORCE"; then
+    set -- "$@" --force
+  fi
+
+  if ! is_disabled "$JIRA_INSECURE"; then
+    set -- "$@" --insecure
+  fi
+
+  if [ -n "$JIRA_PROJECT" ]; then
+    set -- "$@" --project "$JIRA_PROJECT"
+  elif [ ! -t 0 ]; then
+    die "当前不是交互式终端，请通过 JIRA_PROJECT 提供默认 Jira 项目 key。"
+  fi
+
+  if [ -n "$JIRA_BOARD" ]; then
+    set -- "$@" --board "$JIRA_BOARD"
+  elif [ ! -t 0 ]; then
+    die "当前不是交互式终端，请通过 JIRA_BOARD 提供默认 Jira board 名称。"
+  fi
+
+  say "准备执行 jira init。项目和 board 若未通过环境变量提供，将由 jira-cli 交互选择。"
+  jira "$@"
+
+  if [ "$_jira_auth_type" != "mtls" ]; then
+    sync_netrc_from_jira_config "$_jira_password" "$_jira_server" "$_jira_account"
   fi
 }
 
@@ -708,33 +882,16 @@ resolve_install_config() {
   else
     _skill_install_path="$(prompt_required "请输入 skill 安装路径" "$DEFAULT_SKILL_INSTALL_DIR" "SKILL_INSTALL_DIR")"
   fi
-
-  if [ -n "$JIRA_SERVER" ]; then
-    _jira_server="$JIRA_SERVER"
-  else
-    _jira_server="$(prompt_required "请输入 Jira 服务器地址，例如 https://jira.example.com" "" "JIRA_SERVER")"
-  fi
-
-  if [ -n "$JIRA_ACCOUNT" ]; then
-    _jira_account="$JIRA_ACCOUNT"
-  else
-    _jira_account="$(prompt_required "请输入 Jira 账号" "" "JIRA_ACCOUNT")"
-  fi
-
-  if [ -n "$JIRA_API_TOKEN" ]; then
-    _jira_password="$JIRA_API_TOKEN"
-  else
-    _jira_password="$(prompt_secret "请输入 Jira 密码或 API Token" "JIRA_API_TOKEN")"
-  fi
 }
 
 install_flow() {
   ensure_project_source
   ensure_jira_cli
+  run_jira_init
 
   if ! is_disabled "$SKIP_CONFIG_STEPS"; then
     say ""
-    say "源码和 jira-cli 检查完成，已按临时开关 SKIP_CONFIG_STEPS=1 跳过 skill/netrc/jira init。"
+    say "源码、jira-cli 安装和 jira-cli 初始化完成，已按临时开关 SKIP_CONFIG_STEPS=1 跳过 skill/launcher 配置。"
     say "源码目录：$PROJECT_DIR"
     return 0
   fi
@@ -744,8 +901,6 @@ install_flow() {
 
   resolve_install_config
   create_skill_symlink "$_skill_install_path"
-  write_netrc "$_jira_server" "$_jira_account" "$_jira_password"
-  run_jira_init
   install_launcher
 
   say ""

@@ -2,9 +2,11 @@
 set -euo pipefail
 
 REPO="ankitpokhrel/jira-cli"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${JIRA_CLI_BIN_DIR:-/usr/local/bin}"
 BINARY_NAME="jira"
-GITHUB_API="https://api.github.com/repos/${REPO}/releases/latest"
+GITHUB_LATEST_URL="https://github.com/${REPO}/releases/latest"
+GITHUB_RELEASE_BASE="https://github.com/${REPO}/releases/download"
+TMP_DIR_TO_CLEAN=""
 
 usage() {
   cat <<EOF
@@ -24,12 +26,30 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+install_binary() {
+  local source="$1"
+  local target="$2"
+
+  mkdir -p "$(dirname "$target")"
+
+  if install -m 0755 "$source" "$target" 2>/dev/null; then
+    return 0
+  fi
+
+  if ! need_cmd sudo; then
+    echo "Permission denied installing to ${target}, and sudo is not available."
+    exit 1
+  fi
+
+  sudo install -m 0755 "$source" "$target"
+}
+
 ensure_deps() {
   echo "[1/7] Checking dependencies..."
 
   local missing=()
 
-  for cmd in curl jq tar find grep sed dpkg; do
+  for cmd in curl tar find grep sed sort; do
     if ! need_cmd "$cmd"; then
       missing+=("$cmd")
     fi
@@ -38,7 +58,7 @@ ensure_deps() {
   if [[ "${#missing[@]}" -gt 0 ]]; then
     echo "Installing missing packages: ${missing[*]}"
     sudo apt-get update
-    sudo apt-get install -y curl jq tar findutils grep sed dpkg ca-certificates
+    sudo apt-get install -y curl tar findutils grep sed coreutils ca-certificates
   fi
 }
 
@@ -69,12 +89,22 @@ detect_platform() {
   esac
 }
 
-fetch_latest_release_json() {
-  curl -fsSL "$GITHUB_API"
+fetch_latest_tag() {
+  local effective_url tag
+
+  effective_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "$GITHUB_LATEST_URL")"
+  tag="${effective_url##*/}"
+
+  if [[ -z "$tag" || "$tag" == "$effective_url" || "$tag" != v* ]]; then
+    echo "Failed to resolve latest jira-cli release tag from ${GITHUB_LATEST_URL}." >&2
+    return 1
+  fi
+
+  echo "$tag"
 }
 
-get_latest_version_from_json() {
-  jq -r '.tag_name' | sed 's/^v//'
+get_latest_version() {
+  fetch_latest_tag | sed 's/^v//'
 }
 
 get_local_version() {
@@ -106,42 +136,32 @@ get_local_version() {
 }
 
 resolve_download_url() {
-  local release_json="$1"
+  local version="$1"
 
-  echo "$release_json" |
-    jq -r --arg os "$OS" --arg arch "$ASSET_ARCH" '
-      .assets[]
-      | select(.name | test("jira_[0-9.]+_" + $os + "_" + $arch + "\\.tar\\.gz$"))
-      | .browser_download_url
-    ' |
-    head -n 1
+  echo "${GITHUB_RELEASE_BASE}/v${version}/jira_${version}_${OS}_${ASSET_ARCH}.tar.gz"
 }
 
-install_from_release_json() {
-  local release_json="$1"
-
+install_version() {
+  local latest_version="$1"
   detect_platform
 
-  local tag_name latest_version download_url tmp_dir archive jira_bin
+  local tag_name download_url tmp_dir archive jira_bin
 
-  tag_name="$(echo "$release_json" | jq -r '.tag_name')"
-  latest_version="${tag_name#v}"
-
-  if [[ -z "$tag_name" || "$tag_name" == "null" ]]; then
-    echo "Failed to resolve latest release tag."
+  if [[ -z "$latest_version" ]]; then
+    echo "Failed to resolve latest version."
     exit 1
   fi
+
+  tag_name="v${latest_version}"
 
   echo "[2/7] Latest release: ${tag_name}"
   echo "[3/7] Detected platform: ${OS}/${ASSET_ARCH}"
 
-  download_url="$(resolve_download_url "$release_json")"
+  download_url="$(resolve_download_url "$latest_version")"
 
-  if [[ -z "$download_url" || "$download_url" == "null" ]]; then
-    echo "Could not find a release asset for ${OS}/${ASSET_ARCH}."
-    echo
-    echo "Available assets:"
-    echo "$release_json" | jq -r '.assets[].name'
+  if ! curl -fsSIL "$download_url" >/dev/null; then
+    echo "Could not find a release asset for ${OS}/${ASSET_ARCH}:"
+    echo "$download_url"
     exit 1
   fi
 
@@ -149,7 +169,8 @@ install_from_release_json() {
   echo "$download_url"
 
   tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "$tmp_dir"' EXIT
+  TMP_DIR_TO_CLEAN="$tmp_dir"
+  trap 'rm -rf "$TMP_DIR_TO_CLEAN"' EXIT
 
   archive="${tmp_dir}/jira-cli.tar.gz"
 
@@ -168,7 +189,7 @@ install_from_release_json() {
   chmod +x "$jira_bin"
 
   echo "[6/7] Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
-  sudo install -m 0755 "$jira_bin" "${INSTALL_DIR}/${BINARY_NAME}"
+  install_binary "$jira_bin" "${INSTALL_DIR}/${BINARY_NAME}"
 
   echo "[7/7] Verifying installation..."
   "${INSTALL_DIR}/${BINARY_NAME}" version || "${INSTALL_DIR}/${BINARY_NAME}" --version || true
@@ -181,10 +202,10 @@ cmd_install() {
   ensure_deps
 
   echo "Installing latest jira-cli..."
-  local release_json
-  release_json="$(fetch_latest_release_json)"
+  local latest_version
+  latest_version="$(get_latest_version)"
 
-  install_from_release_json "$release_json"
+  install_version "$latest_version"
 
   echo
   echo "Next step:"
@@ -196,10 +217,8 @@ cmd_update() {
 
   echo "Checking for jira-cli updates..."
 
-  local release_json latest_version local_version
-
-  release_json="$(fetch_latest_release_json)"
-  latest_version="$(echo "$release_json" | get_latest_version_from_json)"
+  local latest_version local_version
+  latest_version="$(get_latest_version)"
 
   if [[ -z "$latest_version" || "$latest_version" == "null" ]]; then
     echo "Failed to resolve latest version."
@@ -209,16 +228,17 @@ cmd_update() {
   if ! local_version="$(get_local_version)"; then
     echo "jira-cli is not installed or local version could not be detected."
     echo "Installing latest version: ${latest_version}"
-    install_from_release_json "$release_json"
+    install_version "$latest_version"
     return
   fi
 
   echo "Local version : ${local_version}"
   echo "Latest version: ${latest_version}"
 
-  if dpkg --compare-versions "$latest_version" gt "$local_version"; then
+  if [[ "$(printf '%s\n%s\n' "$local_version" "$latest_version" | sort -V | tail -n 1)" == "$latest_version" \
+    && "$latest_version" != "$local_version" ]]; then
     echo "New version available. Updating jira-cli..."
-    install_from_release_json "$release_json"
+    install_version "$latest_version"
   else
     echo "Already up to date."
   fi
@@ -227,10 +247,8 @@ cmd_update() {
 cmd_version() {
   ensure_deps
 
-  local release_json latest_version local_version
-
-  release_json="$(fetch_latest_release_json)"
-  latest_version="$(echo "$release_json" | get_latest_version_from_json)"
+  local latest_version local_version
+  latest_version="$(get_latest_version)"
 
   if local_version="$(get_local_version)"; then
     echo "Local version : ${local_version}"

@@ -16,7 +16,7 @@ set -eu
 ###############################################################################
 
 APP_NAME="${APP_NAME:-zeppos-jira}"
-INSTALLER_VERSION="${INSTALLER_VERSION:-0.2.0}"
+INSTALLER_VERSION="${INSTALLER_VERSION:-0.2.1}"
 REPO_URL="${REPO_URL:-https://github.com/active-ailab/zeppos-jira-workflow.git}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 RAW_BASE_URL="${RAW_BASE_URL:-https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/${REPO_BRANCH}}"
@@ -39,9 +39,10 @@ DEFAULT_SKILL_INSTALL_DIR="${DEFAULT_SKILL_INSTALL_DIR:-${CODEX_HOME:-$HOME/.cod
 
 # jira-cli installer bundled in this repository.
 JIRA_CLI_REPO="${JIRA_CLI_REPO:-ankitpokhrel/jira-cli}"
-JIRA_CLI_GITHUB_API="${JIRA_CLI_GITHUB_API:-https://api.github.com/repos/${JIRA_CLI_REPO}/releases/latest}"
+JIRA_CLI_LATEST_URL="${JIRA_CLI_LATEST_URL:-https://github.com/${JIRA_CLI_REPO}/releases/latest}"
 JIRA_CLI_SCRIPT_REL_PATH="${JIRA_CLI_SCRIPT_REL_PATH:-jira-cli.sh}"
 DEFAULT_JIRA_CLI_INSTALL_URL="${RAW_BASE_URL}/${JIRA_CLI_SCRIPT_REL_PATH}"
+JIRA_CLI_INSTALL_URL_PROVIDED="${JIRA_CLI_INSTALL_URL+x}"
 JIRA_CLI_INSTALL_URL="${JIRA_CLI_INSTALL_URL:-$DEFAULT_JIRA_CLI_INSTALL_URL}"
 JIRA_CLI_UPDATE_CMD="${JIRA_CLI_UPDATE_CMD:-}"
 
@@ -122,6 +123,7 @@ Environment:
   INSTALL_JIRA_CLI        是否自动安装 jira-cli，默认：1；设为 0 跳过
   RUN_JIRA_INIT           是否执行 jira init，默认：1；设为 0 跳过
   SKIP_CONFIG_STEPS       临时开关：跳过 skill/netrc/jira init，默认：1
+  JIRA_CLI_LATEST_URL     jira-cli latest release URL，默认：GitHub releases/latest
   JIRA_CLI_INSTALL_URL    jira-cli 子安装脚本 raw URL
   JIRA_CLI_UPDATE_CMD     自定义 jira-cli 升级命令
 EOF
@@ -326,16 +328,16 @@ get_local_jira_cli_version() {
 get_latest_jira_cli_version() {
   has_cmd curl || return 1
 
-  _json="$(curl -fsSL "$JIRA_CLI_GITHUB_API" 2>/dev/null || true)"
-  [ -n "$_json" ] || return 1
+  _effective_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "$JIRA_CLI_LATEST_URL" 2>/dev/null || true)"
+  [ -n "$_effective_url" ] || return 1
 
-  if has_cmd jq; then
-    _tag="$(printf '%s\n' "$_json" | jq -r '.tag_name // empty' 2>/dev/null || true)"
-  else
-    _tag="$(printf '%s\n' "$_json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
-  fi
+  _tag="${_effective_url##*/}"
 
-  [ -n "$_tag" ] || return 1
+  case "$_tag" in
+    v*) ;;
+    *) return 1 ;;
+  esac
+
   strip_leading_v "$_tag"
 }
 
@@ -414,12 +416,16 @@ install_jira_cli_with_project_script() {
     return $?
   fi
 
-  warn "工程内 jira-cli 安装脚本执行失败，将尝试 fallback。"
+  warn "工程内 jira-cli 安装脚本执行失败。"
   return 1
 }
 
 install_jira_cli_with_custom_script() {
   if [ -z "$JIRA_CLI_INSTALL_URL" ]; then
+    return 1
+  fi
+
+  if [ -z "$JIRA_CLI_INSTALL_URL_PROVIDED" ]; then
     return 1
   fi
 
@@ -442,14 +448,14 @@ install_jira_cli_with_custom_script() {
 
   if ! curl -fsSL "$JIRA_CLI_INSTALL_URL" -o "$_tmp"; then
     rm -f "$_tmp"
-    warn "jira-cli 子安装脚本下载失败，将尝试 fallback。"
+    warn "jira-cli 子安装脚本下载失败。"
     return 1
   fi
 
   # Avoid executing a web page if a wrong URL is supplied.
   if grep -qi '<html\|<!doctype html\|share_not_found\|not found' "$_tmp"; then
     rm -f "$_tmp"
-    warn "jira-cli 子安装脚本看起来不是 raw shell 文件，将尝试 fallback。"
+    warn "jira-cli 子安装脚本看起来不是 raw shell 文件。"
     return 1
   fi
 
@@ -460,34 +466,12 @@ install_jira_cli_with_custom_script() {
   fi
 
   rm -f "$_tmp"
-  warn "jira-cli 子安装脚本执行失败，将尝试 fallback。"
+  warn "jira-cli 子安装脚本执行失败。"
   return 1
 }
 
 install_jira_cli_fallback() {
-  say "正在尝试安装 jira-cli fallback。"
-
-  if has_cmd brew; then
-    say "使用 Homebrew 安装 jira-cli。"
-    brew tap ankitpokhrel/jira-cli
-    brew install jira-cli
-    return 0
-  fi
-
-  if has_cmd go; then
-    say "使用 Go 安装 jira-cli。"
-    go install github.com/ankitpokhrel/jira-cli/cmd/jira@latest
-
-    _gopath="$(go env GOPATH 2>/dev/null || true)"
-    if [ -n "$_gopath" ] && [ -x "$_gopath/bin/jira" ]; then
-      PATH="$_gopath/bin:$PATH"
-      export PATH
-    fi
-
-    return 0
-  fi
-
-  die "未找到 jira-cli，且当前环境没有 brew 或 go。请安装 brew/go，或提供 JIRA_CLI_INSTALL_URL。"
+  die "jira-cli 自动安装失败；brew/go fallback 已暂时停用。请检查 ${PROJECT_DIR}/${JIRA_CLI_SCRIPT_REL_PATH} 的输出，或显式提供 JIRA_CLI_INSTALL_URL。"
 }
 
 ensure_jira_cli() {
@@ -621,10 +605,10 @@ install_launcher() {
     printf 'PROJECT_VERSION_FILE=%s\n' "$(shell_quote "$PROJECT_VERSION_FILE")"
     printf 'SKILL_REL_PATH=%s\n' "$(shell_quote "$SKILL_REL_PATH")"
     printf 'JIRA_CLI_REPO=%s\n' "$(shell_quote "$JIRA_CLI_REPO")"
-    printf 'JIRA_CLI_GITHUB_API=%s\n' "$(shell_quote "$JIRA_CLI_GITHUB_API")"
+    printf 'JIRA_CLI_LATEST_URL=%s\n' "$(shell_quote "$JIRA_CLI_LATEST_URL")"
     printf 'JIRA_CLI_SCRIPT_REL_PATH=%s\n' "$(shell_quote "$JIRA_CLI_SCRIPT_REL_PATH")"
     printf 'JIRA_CLI_INSTALL_URL=%s\n' "$(shell_quote "$JIRA_CLI_INSTALL_URL")"
-    printf 'export APP_NAME INSTALLER_VERSION PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL REPO_DIR_NAME PROJECT_VERSION_FILE SKILL_REL_PATH JIRA_CLI_REPO JIRA_CLI_GITHUB_API JIRA_CLI_SCRIPT_REL_PATH JIRA_CLI_INSTALL_URL\n'
+    printf 'export APP_NAME INSTALLER_VERSION PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL REPO_DIR_NAME PROJECT_VERSION_FILE SKILL_REL_PATH JIRA_CLI_REPO JIRA_CLI_LATEST_URL JIRA_CLI_SCRIPT_REL_PATH JIRA_CLI_INSTALL_URL\n'
     printf 'exec sh %s "$@"\n' "$(shell_quote "$PROJECT_DIR/install.sh")"
   } > "$_launcher"
 
@@ -715,27 +699,7 @@ update_jira_cli() {
     return 0
   fi
 
-  if has_cmd brew && brew list jira-cli >/dev/null 2>&1; then
-    say "使用 Homebrew 检查/升级 jira-cli。"
-    brew update
-    brew upgrade jira-cli || true
-    return 0
-  fi
-
-  if has_cmd go; then
-    say "使用 Go 检查/升级 jira-cli。"
-    go install github.com/ankitpokhrel/jira-cli/cmd/jira@latest
-
-    _gopath="$(go env GOPATH 2>/dev/null || true)"
-    if [ -n "$_gopath" ] && [ -x "$_gopath/bin/jira" ]; then
-      PATH="$_gopath/bin:$PATH"
-      export PATH
-    fi
-
-    return 0
-  fi
-
-  warn "无法自动判断 jira-cli 的安装方式。你可以设置 JIRA_CLI_UPDATE_CMD 来指定升级命令。"
+  die "无法通过项目脚本更新 jira-cli；brew/go fallback 已暂时停用。你可以设置 JIRA_CLI_UPDATE_CMD 来指定升级命令。"
 }
 
 resolve_install_config() {

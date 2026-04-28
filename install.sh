@@ -16,10 +16,12 @@ set -eu
 ###############################################################################
 
 APP_NAME="${APP_NAME:-zeppos-jira}"
+INSTALLER_VERSION="${INSTALLER_VERSION:-0.2.0}"
 REPO_URL="${REPO_URL:-https://github.com/active-ailab/zeppos-jira-workflow.git}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 RAW_BASE_URL="${RAW_BASE_URL:-https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/${REPO_BRANCH}}"
 REPO_DIR_NAME="${REPO_DIR_NAME:-zeppos-jira-workflow}"
+PROJECT_VERSION_FILE="${PROJECT_VERSION_FILE:-VERSION}"
 
 # Source checkout parent. Defaults under the directory where the command is run.
 RUN_DIR="$(pwd)"
@@ -36,8 +38,11 @@ BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 DEFAULT_SKILL_INSTALL_DIR="${DEFAULT_SKILL_INSTALL_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
 
 # jira-cli installer bundled in this repository.
+JIRA_CLI_REPO="${JIRA_CLI_REPO:-ankitpokhrel/jira-cli}"
+JIRA_CLI_GITHUB_API="${JIRA_CLI_GITHUB_API:-https://api.github.com/repos/${JIRA_CLI_REPO}/releases/latest}"
 JIRA_CLI_SCRIPT_REL_PATH="${JIRA_CLI_SCRIPT_REL_PATH:-jira-cli.sh}"
-JIRA_CLI_INSTALL_URL="${JIRA_CLI_INSTALL_URL:-${RAW_BASE_URL}/${JIRA_CLI_SCRIPT_REL_PATH}}"
+DEFAULT_JIRA_CLI_INSTALL_URL="${RAW_BASE_URL}/${JIRA_CLI_SCRIPT_REL_PATH}"
+JIRA_CLI_INSTALL_URL="${JIRA_CLI_INSTALL_URL:-$DEFAULT_JIRA_CLI_INSTALL_URL}"
 JIRA_CLI_UPDATE_CMD="${JIRA_CLI_UPDATE_CMD:-}"
 
 # Optional non-interactive configuration.
@@ -48,9 +53,9 @@ JIRA_API_TOKEN="${JIRA_API_TOKEN:-${JIRA_TOKEN:-${JIRA_PASSWORD:-}}}"
 RUN_JIRA_INIT="${RUN_JIRA_INIT:-1}"
 INSTALL_JIRA_CLI="${INSTALL_JIRA_CLI:-1}"
 
-# Temporary switch: keep install source-only while the rest of the workflow is
-# being iterated.
-SKIP_POST_SOURCE_STEPS="${SKIP_POST_SOURCE_STEPS:-1}"
+# Temporary switch: keep skill/netrc/jira init disabled while the rest of the
+# workflow is being iterated. jira-cli installation/update still runs.
+SKIP_CONFIG_STEPS="${SKIP_CONFIG_STEPS:-${SKIP_POST_SOURCE_STEPS:-1}}"
 
 say() {
   printf '%s\n' "$*"
@@ -90,7 +95,8 @@ Usage:
   install.sh [安装父目录]           下载源码到父目录/${REPO_DIR_NAME}；默认：当前目录
   install.sh install [安装父目录]   下载源码到父目录/${REPO_DIR_NAME}；默认：当前目录
   install.sh install --path PATH    下载源码到 PATH/${REPO_DIR_NAME}
-  install.sh update [安装父目录]    更新 PATH/${REPO_DIR_NAME}；默认：当前目录
+  install.sh update [安装父目录]    先更新源码，再检查/更新 jira-cli
+  install.sh version [安装父目录]   显示安装器、源码、jira-cli 版本
   install.sh help         显示帮助
 
 One-line install:
@@ -99,10 +105,12 @@ One-line install:
 
 Environment:
   APP_NAME                本地管理命令名，默认：zeppos-jira
+  INSTALLER_VERSION       安装器版本，默认：${INSTALLER_VERSION}
   REPO_URL                Git 仓库地址，默认：${REPO_URL}
   REPO_BRANCH             Git 分支，默认：main
   RAW_BASE_URL            raw 文件基础 URL
   REPO_DIR_NAME           源码目录名，默认：zeppos-jira-workflow
+  PROJECT_VERSION_FILE    源码版本文件，默认：VERSION
   INSTALL_DIR             源码安装父目录，默认：当前目录
   PROJECT_DIR             精确源码目录，兼容旧变量；优先级高于 INSTALL_DIR
   SKILL_REL_PATH          工程内 skill 目录，默认：zeppos-jira
@@ -113,7 +121,7 @@ Environment:
   JIRA_API_TOKEN          Jira 密码或 API Token，也兼容 JIRA_TOKEN/JIRA_PASSWORD
   INSTALL_JIRA_CLI        是否自动安装 jira-cli，默认：1；设为 0 跳过
   RUN_JIRA_INIT           是否执行 jira init，默认：1；设为 0 跳过
-  SKIP_POST_SOURCE_STEPS  临时开关：下载源码后跳过后续初始化，默认：1
+  SKIP_CONFIG_STEPS       临时开关：跳过 skill/netrc/jira init，默认：1
   JIRA_CLI_INSTALL_URL    jira-cli 子安装脚本 raw URL
   JIRA_CLI_UPDATE_CMD     自定义 jira-cli 升级命令
 EOF
@@ -222,6 +230,115 @@ set_project_dir_from_install_dir() {
   fi
 }
 
+strip_leading_v() {
+  printf '%s\n' "$1" | sed 's/^v//'
+}
+
+read_first_line() {
+  sed -n '1{s/[[:space:]]*$//;p;q;}' "$1"
+}
+
+get_project_version_from_dir() {
+  _dir="$1"
+  _version_file="$_dir/$PROJECT_VERSION_FILE"
+
+  if [ -f "$_version_file" ]; then
+    read_first_line "$_version_file"
+    return 0
+  fi
+
+  if [ -d "$_dir/.git" ]; then
+    (
+      cd "$_dir"
+      git describe --tags --always --dirty 2>/dev/null || git rev-parse --short HEAD
+    )
+    return 0
+  fi
+
+  return 1
+}
+
+get_remote_project_version() {
+  if ! has_cmd curl; then
+    return 1
+  fi
+
+  _version="$(curl -fsSL "$RAW_BASE_URL/$PROJECT_VERSION_FILE" 2>/dev/null | sed -n '1{s/[[:space:]]*$//;p;q;}' || true)"
+  [ -n "$_version" ] || return 1
+  printf '%s\n' "$_version"
+}
+
+get_remote_project_commit() {
+  has_cmd git || return 1
+  git ls-remote "$REPO_URL" "refs/heads/$REPO_BRANCH" 2>/dev/null | awk 'NR == 1 { print substr($1, 1, 12) }'
+}
+
+get_local_project_commit() {
+  [ -d "$PROJECT_DIR/.git" ] || return 1
+  (
+    cd "$PROJECT_DIR"
+    git rev-parse --short=12 HEAD
+  )
+}
+
+get_fetched_remote_project_version() {
+  [ -d "$PROJECT_DIR/.git" ] || return 1
+
+  (
+    cd "$PROJECT_DIR"
+
+    if git cat-file -e "origin/$REPO_BRANCH:$PROJECT_VERSION_FILE" 2>/dev/null; then
+      git show "origin/$REPO_BRANCH:$PROJECT_VERSION_FILE" | sed -n '1{s/[[:space:]]*$//;p;q;}'
+    else
+      git rev-parse --short=12 "origin/$REPO_BRANCH"
+    fi
+  )
+}
+
+get_fetched_remote_project_commit() {
+  [ -d "$PROJECT_DIR/.git" ] || return 1
+
+  (
+    cd "$PROJECT_DIR"
+    git rev-parse --short=12 "origin/$REPO_BRANCH"
+  )
+}
+
+get_local_jira_cli_version() {
+  has_cmd jira || return 1
+
+  _output="$(
+    {
+      jira version 2>/dev/null || true
+      jira --version 2>/dev/null || true
+    } | head -n 5
+  )"
+
+  _version="$(
+    printf '%s\n' "$_output" |
+      grep -Eo 'v?[0-9]+([.][0-9]+){1,3}([-+][0-9A-Za-z.-]+)?' |
+      head -n 1
+  )"
+  [ -n "$_version" ] || return 1
+  strip_leading_v "$_version"
+}
+
+get_latest_jira_cli_version() {
+  has_cmd curl || return 1
+
+  _json="$(curl -fsSL "$JIRA_CLI_GITHUB_API" 2>/dev/null || true)"
+  [ -n "$_json" ] || return 1
+
+  if has_cmd jq; then
+    _tag="$(printf '%s\n' "$_json" | jq -r '.tag_name // empty' 2>/dev/null || true)"
+  else
+    _tag="$(printf '%s\n' "$_json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+  fi
+
+  [ -n "$_tag" ] || return 1
+  strip_leading_v "$_tag"
+}
+
 normalize_jira_server() {
   printf '%s\n' "$1" | sed 's#/*$##'
 }
@@ -279,6 +396,8 @@ install_jira_cli_with_project_script() {
 
   [ -f "$_script" ] || return 1
 
+  # Keep the release download/install details in jira-cli.sh. This installer
+  # only orchestrates it after the repository has been checked out.
   if [ "$(uname -s 2>/dev/null || printf unknown)" != "Linux" ]; then
     return 1
   fi
@@ -301,6 +420,11 @@ install_jira_cli_with_project_script() {
 
 install_jira_cli_with_custom_script() {
   if [ -z "$JIRA_CLI_INSTALL_URL" ]; then
+    return 1
+  fi
+
+  if [ "$JIRA_CLI_INSTALL_URL" = "$DEFAULT_JIRA_CLI_INSTALL_URL" ] \
+    && [ "$(uname -s 2>/dev/null || printf unknown)" != "Linux" ]; then
     return 1
   fi
 
@@ -488,13 +612,19 @@ install_launcher() {
   {
     printf '%s\n' '#!/usr/bin/env sh'
     printf 'APP_NAME=%s\n' "$(shell_quote "$APP_NAME")"
+    printf 'INSTALLER_VERSION=%s\n' "$(shell_quote "$INSTALLER_VERSION")"
     printf 'PROJECT_DIR=%s\n' "$(shell_quote "$PROJECT_DIR")"
     printf 'REPO_URL=%s\n' "$(shell_quote "$REPO_URL")"
     printf 'REPO_BRANCH=%s\n' "$(shell_quote "$REPO_BRANCH")"
     printf 'RAW_BASE_URL=%s\n' "$(shell_quote "$RAW_BASE_URL")"
+    printf 'REPO_DIR_NAME=%s\n' "$(shell_quote "$REPO_DIR_NAME")"
+    printf 'PROJECT_VERSION_FILE=%s\n' "$(shell_quote "$PROJECT_VERSION_FILE")"
     printf 'SKILL_REL_PATH=%s\n' "$(shell_quote "$SKILL_REL_PATH")"
+    printf 'JIRA_CLI_REPO=%s\n' "$(shell_quote "$JIRA_CLI_REPO")"
+    printf 'JIRA_CLI_GITHUB_API=%s\n' "$(shell_quote "$JIRA_CLI_GITHUB_API")"
     printf 'JIRA_CLI_SCRIPT_REL_PATH=%s\n' "$(shell_quote "$JIRA_CLI_SCRIPT_REL_PATH")"
-    printf 'export APP_NAME PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL SKILL_REL_PATH JIRA_CLI_SCRIPT_REL_PATH\n'
+    printf 'JIRA_CLI_INSTALL_URL=%s\n' "$(shell_quote "$JIRA_CLI_INSTALL_URL")"
+    printf 'export APP_NAME INSTALLER_VERSION PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL REPO_DIR_NAME PROJECT_VERSION_FILE SKILL_REL_PATH JIRA_CLI_REPO JIRA_CLI_GITHUB_API JIRA_CLI_SCRIPT_REL_PATH JIRA_CLI_INSTALL_URL\n'
     printf 'exec sh %s "$@"\n' "$(shell_quote "$PROJECT_DIR/install.sh")"
   } > "$_launcher"
 
@@ -519,16 +649,27 @@ update_project_source() {
   (
     cd "$PROJECT_DIR"
 
+    _local_version="$(get_project_version_from_dir "$PROJECT_DIR" 2>/dev/null || true)"
+    _local_commit="$(get_local_project_commit 2>/dev/null || true)"
+
     git fetch origin "$REPO_BRANCH"
 
+    _remote_version="$(get_fetched_remote_project_version 2>/dev/null || true)"
+    _remote_commit="$(get_fetched_remote_project_commit 2>/dev/null || true)"
     _current="$(git rev-parse HEAD)"
     _remote="$(git rev-parse "origin/$REPO_BRANCH")"
+
+    say "本地源码版本：${_local_version:-unknown} (${_local_commit:-unknown})"
+    say "远端源码版本：${_remote_version:-unknown} (${_remote_commit:-unknown})"
 
     if [ "$_current" = "$_remote" ]; then
       say "工程源码已是最新版本。"
     elif git merge-base --is-ancestor "$_current" "$_remote"; then
       say "发现工程源码更新，正在执行 fast-forward pull。"
       git pull --ff-only origin "$REPO_BRANCH"
+      _after_version="$(get_project_version_from_dir "$PROJECT_DIR" 2>/dev/null || true)"
+      _after_commit="$(get_local_project_commit 2>/dev/null || true)"
+      say "更新后源码版本：${_after_version:-unknown} (${_after_commit:-unknown})"
     else
       warn "源码目录存在本地提交或分叉，未自动覆盖：$PROJECT_DIR"
       warn "请进入源码目录手动检查：git status && git pull --ff-only origin $REPO_BRANCH"
@@ -625,15 +766,14 @@ resolve_install_config() {
 
 install_flow() {
   ensure_project_source
+  ensure_jira_cli
 
-  if ! is_disabled "$SKIP_POST_SOURCE_STEPS"; then
+  if ! is_disabled "$SKIP_CONFIG_STEPS"; then
     say ""
-    say "源码下载完成，已按临时开关 SKIP_POST_SOURCE_STEPS=1 跳过后续初始化。"
+    say "源码和 jira-cli 检查完成，已按临时开关 SKIP_CONFIG_STEPS=1 跳过 skill/netrc/jira init。"
     say "源码目录：$PROJECT_DIR"
     return 0
   fi
-
-  ensure_jira_cli
 
   say ""
   say "开始初始化配置。"
@@ -653,16 +793,48 @@ install_flow() {
 
 update_flow() {
   update_project_source
+  update_jira_cli
 
-  if ! is_disabled "$SKIP_POST_SOURCE_STEPS"; then
+  if ! is_disabled "$SKIP_CONFIG_STEPS"; then
     say ""
-    say "源码更新完成，已按临时开关 SKIP_POST_SOURCE_STEPS=1 跳过后续初始化。"
+    say "源码和 jira-cli 更新检查完成，已按临时开关 SKIP_CONFIG_STEPS=1 跳过 skill/netrc/jira init。"
     say "源码目录：$PROJECT_DIR"
     return 0
   fi
 
-  update_jira_cli
   say "更新流程完成。"
+}
+
+version_flow() {
+  say "${APP_NAME} installer version: $INSTALLER_VERSION"
+  say "source path: $PROJECT_DIR"
+
+  if [ -d "$PROJECT_DIR/.git" ]; then
+    _local_version="$(get_project_version_from_dir "$PROJECT_DIR" 2>/dev/null || true)"
+    _local_commit="$(get_local_project_commit 2>/dev/null || true)"
+    _remote_version="$(get_remote_project_version 2>/dev/null || true)"
+    _remote_commit="$(get_remote_project_commit 2>/dev/null || true)"
+
+    say "source local : ${_local_version:-unknown} (${_local_commit:-unknown})"
+    say "source remote: ${_remote_version:-unknown} (${_remote_commit:-unknown})"
+  else
+    say "source local : not installed"
+    _remote_version="$(get_remote_project_version 2>/dev/null || true)"
+    _remote_commit="$(get_remote_project_commit 2>/dev/null || true)"
+    say "source remote: ${_remote_version:-unknown} (${_remote_commit:-unknown})"
+  fi
+
+  if _jira_local="$(get_local_jira_cli_version 2>/dev/null)"; then
+    say "jira-cli local : $_jira_local"
+  else
+    say "jira-cli local : not installed"
+  fi
+
+  if _jira_latest="$(get_latest_jira_cli_version 2>/dev/null)"; then
+    say "jira-cli latest: $_jira_latest"
+  else
+    say "jira-cli latest: unknown"
+  fi
 }
 
 parse_path_args() {
@@ -721,6 +893,11 @@ parse_args() {
       shift
       parse_path_args "$@"
       ;;
+    version|-v|--version)
+      _cmd="version"
+      shift
+      parse_path_args "$@"
+      ;;
     help|-h|--help)
       _cmd="help"
       ;;
@@ -763,6 +940,9 @@ main() {
       ;;
     update)
       update_flow
+      ;;
+    version)
+      version_flow
       ;;
     help)
       usage

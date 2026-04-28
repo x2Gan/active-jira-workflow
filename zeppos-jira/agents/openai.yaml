@@ -1,0 +1,3 @@
+interface:
+  display_name: "ZeppOS Jira"
+  short_description: "Query Jira through local ankitpokhrel/jira-cli and format results."

@@ -2,50 +2,47 @@
 set -eu
 
 ###############################################################################
-# XXX installer
+# zeppos-jira installer
 #
-# Usage:
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/XXX/main/install.sh)"
+# Install:
+#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)"
 #
 # Update:
-#   xxx update
+#   zeppos-jira update
 #   or
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/XXX/main/install.sh)" -- update
-#
-# Required repo layout:
-#   XXX proj top/
-#     xxxx skill/
-#     install.sh
+#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)" -- update
 #
 ###############################################################################
 
-APP_NAME="${APP_NAME:-xxx}"
-
-# 改成你的真实 Git 仓库地址
-REPO_URL="${REPO_URL:-https://github.com/YOUR_ORG/XXX.git}"
+APP_NAME="${APP_NAME:-zeppos-jira}"
+REPO_URL="${REPO_URL:-https://github.com/active-ailab/zeppos-jira-workflow.git}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
+RAW_BASE_URL="${RAW_BASE_URL:-https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/${REPO_BRANCH}}"
 
-# 源码安装位置，类似 oh-my-zsh 的 ~/.oh-my-zsh
+# Source checkout, similar to ~/.oh-my-zsh.
 PROJECT_DIR="${PROJECT_DIR:-$HOME/.${APP_NAME}/src}"
 
-# 工程内 skill 目录相对路径
-# 如果你的真实目录名就是 "xxxx skill"，保持不变；否则改成真实路径。
-SKILL_REL_PATH="${SKILL_REL_PATH:-xxxx skill}"
+# Skill directory inside this repository.
+SKILL_REL_PATH="${SKILL_REL_PATH:-zeppos-jira}"
 
-# 安装一个本地命令：xxx update
+# Where to install the local management command: zeppos-jira update.
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 
-# jira-cli 子安装脚本地址。
-# 不建议填 ChatGPT share URL；应使用 raw shell URL。
-# 示例：
-#   JIRA_CLI_INSTALL_URL=https://raw.githubusercontent.com/YOUR_ORG/XXX/main/tools/install-jira-cli.sh
-JIRA_CLI_INSTALL_URL="${JIRA_CLI_INSTALL_URL:-}"
+# Codex skill install directory. Override this if you use another skills path.
+DEFAULT_SKILL_INSTALL_DIR="${DEFAULT_SKILL_INSTALL_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
 
-# 可选：自定义 jira-cli 升级命令。
-# 示例：
-#   JIRA_CLI_UPDATE_CMD='brew upgrade jira-cli'
+# jira-cli installer bundled in this repository.
+JIRA_CLI_SCRIPT_REL_PATH="${JIRA_CLI_SCRIPT_REL_PATH:-jira-cli.sh}"
+JIRA_CLI_INSTALL_URL="${JIRA_CLI_INSTALL_URL:-${RAW_BASE_URL}/${JIRA_CLI_SCRIPT_REL_PATH}}"
 JIRA_CLI_UPDATE_CMD="${JIRA_CLI_UPDATE_CMD:-}"
 
+# Optional non-interactive configuration.
+SKILL_INSTALL_DIR="${SKILL_INSTALL_DIR:-}"
+JIRA_SERVER="${JIRA_SERVER:-}"
+JIRA_ACCOUNT="${JIRA_ACCOUNT:-}"
+JIRA_API_TOKEN="${JIRA_API_TOKEN:-${JIRA_TOKEN:-${JIRA_PASSWORD:-}}}"
+RUN_JIRA_INIT="${RUN_JIRA_INIT:-1}"
+INSTALL_JIRA_CLI="${INSTALL_JIRA_CLI:-1}"
 
 say() {
   printf '%s\n' "$*"
@@ -68,6 +65,17 @@ need_cmd() {
   has_cmd "$1" || die "缺少必要命令：$1"
 }
 
+is_disabled() {
+  case "${1:-}" in
+    0|false|FALSE|no|NO|off|OFF)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 usage() {
   cat <<EOF
 Usage:
@@ -76,13 +84,23 @@ Usage:
   install.sh update       更新工程源码，并尝试更新 jira-cli
   install.sh help         显示帮助
 
+One-line install:
+  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)"
+
 Environment:
-  APP_NAME                默认：xxx
-  REPO_URL                Git 仓库地址
+  APP_NAME                本地管理命令名，默认：zeppos-jira
+  REPO_URL                Git 仓库地址，默认：${REPO_URL}
   REPO_BRANCH             Git 分支，默认：main
-  PROJECT_DIR             源码下载目录，默认：~/.xxx/src
-  SKILL_REL_PATH          工程内 skill 目录相对路径，默认：xxxx skill
+  RAW_BASE_URL            raw 文件基础 URL
+  PROJECT_DIR             源码下载目录，默认：~/.zeppos-jira/src
+  SKILL_REL_PATH          工程内 skill 目录，默认：zeppos-jira
+  SKILL_INSTALL_DIR       skill 安装目录，默认：${DEFAULT_SKILL_INSTALL_DIR}
   BIN_DIR                 本地命令安装目录，默认：~/.local/bin
+  JIRA_SERVER             Jira 地址，例如：https://jira.example.com
+  JIRA_ACCOUNT            Jira 账号
+  JIRA_API_TOKEN          Jira 密码或 API Token，也兼容 JIRA_TOKEN/JIRA_PASSWORD
+  INSTALL_JIRA_CLI        是否自动安装 jira-cli，默认：1；设为 0 跳过
+  RUN_JIRA_INIT           是否执行 jira init，默认：1；设为 0 跳过
   JIRA_CLI_INSTALL_URL    jira-cli 子安装脚本 raw URL
   JIRA_CLI_UPDATE_CMD     自定义 jira-cli 升级命令
 EOF
@@ -91,6 +109,20 @@ EOF
 prompt_required() {
   _prompt="$1"
   _default="${2:-}"
+  _env_name="${3:-}"
+
+  if [ ! -t 0 ]; then
+    if [ -n "$_default" ]; then
+      printf '%s\n' "$_default"
+      return 0
+    fi
+
+    if [ -n "$_env_name" ]; then
+      die "当前不是交互式终端，请通过环境变量 ${_env_name} 提供配置。"
+    fi
+
+    die "当前不是交互式终端，缺少必要配置。"
+  fi
 
   while :; do
     if [ -n "$_default" ]; then
@@ -116,21 +148,22 @@ prompt_required() {
 
 prompt_secret() {
   _prompt="$1"
+  _env_name="${2:-JIRA_API_TOKEN}"
+
+  if [ ! -t 0 ]; then
+    die "当前不是交互式终端，请通过环境变量 ${_env_name} 提供 Jira 密码或 API Token。"
+  fi
 
   while :; do
     printf '%s: ' "$_prompt" >&2
 
-    if [ -t 0 ]; then
-      _old_stty="$(stty -g 2>/dev/null || true)"
-      stty -echo 2>/dev/null || true
-      IFS= read -r _answer || true
-      if [ -n "$_old_stty" ]; then
-        stty "$_old_stty" 2>/dev/null || true
-      fi
-      printf '\n' >&2
-    else
-      IFS= read -r _answer || true
+    _old_stty="$(stty -g 2>/dev/null || true)"
+    stty -echo 2>/dev/null || true
+    IFS= read -r _answer || true
+    if [ -n "$_old_stty" ]; then
+      stty "$_old_stty" 2>/dev/null || true
     fi
+    printf '\n' >&2
 
     if [ -n "$_answer" ]; then
       printf '%s\n' "$_answer"
@@ -157,6 +190,10 @@ expand_user_path() {
   esac
 }
 
+shell_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
 normalize_jira_server() {
   printf '%s\n' "$1" | sed 's#/*$##'
 }
@@ -165,7 +202,7 @@ jira_host_from_url() {
   printf '%s\n' "$1" \
     | sed -e 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##' \
           -e 's#/.*$##' \
-          -e 's/:.*$##'
+          -e 's#:.*$##'
 }
 
 ensure_project_source() {
@@ -175,8 +212,20 @@ ensure_project_source() {
     say "检测到已有源码目录：$PROJECT_DIR"
     (
       cd "$PROJECT_DIR"
+
+      _origin="$(git config --get remote.origin.url || true)"
+      if [ -n "$_origin" ] && [ "$_origin" != "$REPO_URL" ]; then
+        warn "当前源码 origin 为 $_origin，本次配置的 REPO_URL 为 $REPO_URL。"
+      fi
+
       git fetch origin "$REPO_BRANCH"
-      git checkout "$REPO_BRANCH" >/dev/null 2>&1 || true
+
+      if git show-ref --verify --quiet "refs/heads/$REPO_BRANCH"; then
+        git checkout "$REPO_BRANCH" >/dev/null 2>&1
+      else
+        git checkout -b "$REPO_BRANCH" "origin/$REPO_BRANCH" >/dev/null 2>&1
+      fi
+
       git pull --ff-only origin "$REPO_BRANCH"
     )
     return 0
@@ -191,6 +240,31 @@ ensure_project_source() {
   git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$PROJECT_DIR"
 }
 
+install_jira_cli_with_project_script() {
+  _script="$PROJECT_DIR/$JIRA_CLI_SCRIPT_REL_PATH"
+
+  [ -f "$_script" ] || return 1
+
+  if [ "$(uname -s 2>/dev/null || printf unknown)" != "Linux" ]; then
+    return 1
+  fi
+
+  if ! has_cmd bash; then
+    warn "发现工程内 jira-cli 安装脚本，但当前环境没有 bash。"
+    return 1
+  fi
+
+  say "正在通过工程内脚本安装 jira-cli：$_script"
+
+  if bash "$_script" install; then
+    has_cmd jira
+    return $?
+  fi
+
+  warn "工程内 jira-cli 安装脚本执行失败，将尝试 fallback。"
+  return 1
+}
+
 install_jira_cli_with_custom_script() {
   if [ -z "$JIRA_CLI_INSTALL_URL" ]; then
     return 1
@@ -198,28 +272,38 @@ install_jira_cli_with_custom_script() {
 
   need_cmd curl
 
-  say "正在通过子安装脚本安装 jira-cli：$JIRA_CLI_INSTALL_URL"
+  if ! has_cmd bash; then
+    warn "无法执行 jira-cli 子安装脚本：当前环境没有 bash。"
+    return 1
+  fi
+
+  say "正在通过 raw 脚本安装 jira-cli：$JIRA_CLI_INSTALL_URL"
 
   _tmp="${TMPDIR:-/tmp}/${APP_NAME}-jira-cli-install.$$"
   rm -f "$_tmp"
 
   if ! curl -fsSL "$JIRA_CLI_INSTALL_URL" -o "$_tmp"; then
     rm -f "$_tmp"
-    warn "jira-cli 子安装脚本下载失败，将尝试官方安装 fallback。"
+    warn "jira-cli 子安装脚本下载失败，将尝试 fallback。"
     return 1
   fi
 
-  # 粗略防止把 HTML 页面当 shell 执行。
-  if grep -qi '<html\|<!doctype html\|share_not_found' "$_tmp"; then
+  # Avoid executing a web page if a wrong URL is supplied.
+  if grep -qi '<html\|<!doctype html\|share_not_found\|not found' "$_tmp"; then
     rm -f "$_tmp"
-    warn "jira-cli 子安装脚本看起来不是 raw shell 文件，将尝试官方安装 fallback。"
+    warn "jira-cli 子安装脚本看起来不是 raw shell 文件，将尝试 fallback。"
     return 1
   fi
 
-  sh "$_tmp"
-  rm -f "$_tmp"
+  if bash "$_tmp" install; then
+    rm -f "$_tmp"
+    has_cmd jira
+    return $?
+  fi
 
-  has_cmd jira
+  rm -f "$_tmp"
+  warn "jira-cli 子安装脚本执行失败，将尝试 fallback。"
+  return 1
 }
 
 install_jira_cli_fallback() {
@@ -249,6 +333,11 @@ install_jira_cli_fallback() {
 }
 
 ensure_jira_cli() {
+  if is_disabled "$INSTALL_JIRA_CLI"; then
+    warn "已按 INSTALL_JIRA_CLI=0 跳过 jira-cli 安装。"
+    return 0
+  fi
+
   if has_cmd jira; then
     say "已检测到 jira-cli：$(command -v jira)"
     return 0
@@ -256,8 +345,10 @@ ensure_jira_cli() {
 
   say "未检测到 jira-cli，准备安装。"
 
-  if ! install_jira_cli_with_custom_script; then
-    install_jira_cli_fallback
+  if ! install_jira_cli_with_project_script; then
+    if ! install_jira_cli_with_custom_script; then
+      install_jira_cli_fallback
+    fi
   fi
 
   has_cmd jira || die "jira-cli 安装完成后仍找不到 jira 命令，请检查 PATH。"
@@ -308,7 +399,7 @@ write_netrc() {
   touch "$_netrc"
   chmod 600 "$_netrc" 2>/dev/null || true
 
-  # 移除旧的托管块，避免重复 machine 条目导致旧密码优先匹配。
+  # Remove old managed block to avoid stale credentials taking precedence.
   awk -v begin="$_begin" -v end="$_end" '
     $0 == begin { skip = 1; next }
     $0 == end { skip = 0; next }
@@ -319,15 +410,12 @@ write_netrc() {
 
   {
     printf '%s\n' "$_begin"
-
-    # jira-cli / netrc 解析通常会按配置里的 server 匹配。
-    # 这里同时写入完整 server 和 host，兼容不同匹配策略。
-    printf 'machine %s\n' "$_jira_server"
+    printf 'machine %s\n' "$_jira_host"
     printf '  login %s\n' "$_jira_account"
     printf '  password %s\n' "$_jira_password"
 
-    if [ "$_jira_host" != "$_jira_server" ]; then
-      printf 'machine %s\n' "$_jira_host"
+    if [ "$_jira_server" != "$_jira_host" ]; then
+      printf 'machine %s\n' "$_jira_server"
       printf '  login %s\n' "$_jira_account"
       printf '  password %s\n' "$_jira_password"
     fi
@@ -340,8 +428,14 @@ write_netrc() {
 }
 
 run_jira_init() {
+  if is_disabled "$RUN_JIRA_INIT"; then
+    warn "已按 RUN_JIRA_INIT=0 跳过 jira init。"
+    return 0
+  fi
+
   if ! has_cmd jira; then
-    die "找不到 jira 命令，无法执行 jira init。"
+    warn "找不到 jira 命令，跳过 jira init。"
+    return 0
   fi
 
   if [ -t 0 ] && [ -t 1 ]; then
@@ -357,10 +451,18 @@ install_launcher() {
 
   _launcher="$BIN_DIR/$APP_NAME"
 
-  cat > "$_launcher" <<EOF
-#!/usr/bin/env sh
-exec "$PROJECT_DIR/install.sh" "\$@"
-EOF
+  {
+    printf '%s\n' '#!/usr/bin/env sh'
+    printf 'APP_NAME=%s\n' "$(shell_quote "$APP_NAME")"
+    printf 'PROJECT_DIR=%s\n' "$(shell_quote "$PROJECT_DIR")"
+    printf 'REPO_URL=%s\n' "$(shell_quote "$REPO_URL")"
+    printf 'REPO_BRANCH=%s\n' "$(shell_quote "$REPO_BRANCH")"
+    printf 'RAW_BASE_URL=%s\n' "$(shell_quote "$RAW_BASE_URL")"
+    printf 'SKILL_REL_PATH=%s\n' "$(shell_quote "$SKILL_REL_PATH")"
+    printf 'JIRA_CLI_SCRIPT_REL_PATH=%s\n' "$(shell_quote "$JIRA_CLI_SCRIPT_REL_PATH")"
+    printf 'export APP_NAME PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL SKILL_REL_PATH JIRA_CLI_SCRIPT_REL_PATH\n'
+    printf 'exec sh %s "$@"\n' "$(shell_quote "$PROJECT_DIR/install.sh")"
+  } > "$_launcher"
 
   chmod +x "$_launcher"
 
@@ -390,25 +492,51 @@ update_project_source() {
 
     if [ "$_current" = "$_remote" ]; then
       say "工程源码已是最新版本。"
-    else
+    elif git merge-base --is-ancestor "$_current" "$_remote"; then
       say "发现工程源码更新，正在执行 fast-forward pull。"
       git pull --ff-only origin "$REPO_BRANCH"
+    else
+      warn "源码目录存在本地提交或分叉，未自动覆盖：$PROJECT_DIR"
+      warn "请进入源码目录手动检查：git status && git pull --ff-only origin $REPO_BRANCH"
     fi
   )
 }
 
-update_jira_cli() {
-  say "正在检查 jira-cli 更新。"
+update_jira_cli_with_project_script() {
+  _script="$PROJECT_DIR/$JIRA_CLI_SCRIPT_REL_PATH"
 
-  if ! has_cmd jira; then
-    warn "当前未安装 jira-cli，将执行安装流程。"
-    ensure_jira_cli
+  [ -f "$_script" ] || return 1
+  has_cmd bash || return 1
+
+  if [ "$(uname -s 2>/dev/null || printf unknown)" != "Linux" ]; then
+    return 1
+  fi
+
+  say "使用工程内脚本检查/升级 jira-cli：$_script"
+  bash "$_script" update
+}
+
+update_jira_cli() {
+  if is_disabled "$INSTALL_JIRA_CLI"; then
+    warn "已按 INSTALL_JIRA_CLI=0 跳过 jira-cli 更新。"
     return 0
   fi
+
+  say "正在检查 jira-cli 更新。"
 
   if [ -n "$JIRA_CLI_UPDATE_CMD" ]; then
     say "使用自定义 jira-cli 升级命令：$JIRA_CLI_UPDATE_CMD"
     sh -c "$JIRA_CLI_UPDATE_CMD"
+    return 0
+  fi
+
+  if update_jira_cli_with_project_script; then
+    return 0
+  fi
+
+  if ! has_cmd jira; then
+    warn "当前未安装 jira-cli，将执行安装流程。"
+    ensure_jira_cli
     return 0
   fi
 
@@ -435,6 +563,32 @@ update_jira_cli() {
   warn "无法自动判断 jira-cli 的安装方式。你可以设置 JIRA_CLI_UPDATE_CMD 来指定升级命令。"
 }
 
+resolve_install_config() {
+  if [ -n "$SKILL_INSTALL_DIR" ]; then
+    _skill_install_path="$SKILL_INSTALL_DIR"
+  else
+    _skill_install_path="$(prompt_required "请输入 skill 安装路径" "$DEFAULT_SKILL_INSTALL_DIR" "SKILL_INSTALL_DIR")"
+  fi
+
+  if [ -n "$JIRA_SERVER" ]; then
+    _jira_server="$JIRA_SERVER"
+  else
+    _jira_server="$(prompt_required "请输入 Jira 服务器地址，例如 https://jira.example.com" "" "JIRA_SERVER")"
+  fi
+
+  if [ -n "$JIRA_ACCOUNT" ]; then
+    _jira_account="$JIRA_ACCOUNT"
+  else
+    _jira_account="$(prompt_required "请输入 Jira 账号" "" "JIRA_ACCOUNT")"
+  fi
+
+  if [ -n "$JIRA_API_TOKEN" ]; then
+    _jira_password="$JIRA_API_TOKEN"
+  else
+    _jira_password="$(prompt_secret "请输入 Jira 密码或 API Token" "JIRA_API_TOKEN")"
+  fi
+}
+
 install_flow() {
   ensure_project_source
   ensure_jira_cli
@@ -442,12 +596,7 @@ install_flow() {
   say ""
   say "开始初始化配置。"
 
-  _default_skill_dir="$HOME/.chatgpt/skills"
-  _skill_install_path="$(prompt_required "请输入 SKILL 安装路径" "$_default_skill_dir")"
-  _jira_server="$(prompt_required "请输入 Jira 服务器路径，例如 https://jira.example.com" "")"
-  _jira_account="$(prompt_required "请输入 Jira 账号" "")"
-  _jira_password="$(prompt_secret "请输入 Jira 密码或 API Token")"
-
+  resolve_install_config
   create_skill_symlink "$_skill_install_path"
   write_netrc "$_jira_server" "$_jira_account" "$_jira_password"
   run_jira_init
@@ -456,6 +605,7 @@ install_flow() {
   say ""
   say "安装完成。"
   say "源码目录：$PROJECT_DIR"
+  say "skill 目录：$(expand_user_path "$_skill_install_path")/$(basename "$SKILL_REL_PATH")"
   say "更新命令：$APP_NAME update"
 }
 
@@ -465,14 +615,25 @@ update_flow() {
   say "更新流程完成。"
 }
 
+normalize_paths() {
+  PROJECT_DIR="$(expand_user_path "$PROJECT_DIR")"
+  BIN_DIR="$(expand_user_path "$BIN_DIR")"
+  DEFAULT_SKILL_INSTALL_DIR="$(expand_user_path "$DEFAULT_SKILL_INSTALL_DIR")"
+  if [ -n "$SKILL_INSTALL_DIR" ]; then
+    SKILL_INSTALL_DIR="$(expand_user_path "$SKILL_INSTALL_DIR")"
+  fi
+}
+
 main() {
+  normalize_paths
+
   _cmd="${1:-install}"
 
   case "$_cmd" in
     install)
       install_flow
       ;;
-    update)
+    update|upgrade)
       update_flow
       ;;
     help|-h|--help)

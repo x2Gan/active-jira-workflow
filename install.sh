@@ -6,6 +6,7 @@ set -eu
 #
 # Install:
 #   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)"
+#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)" -- /path/to/parent
 #
 # Update:
 #   zeppos-jira update
@@ -18,9 +19,12 @@ APP_NAME="${APP_NAME:-zeppos-jira}"
 REPO_URL="${REPO_URL:-https://github.com/active-ailab/zeppos-jira-workflow.git}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 RAW_BASE_URL="${RAW_BASE_URL:-https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/${REPO_BRANCH}}"
+REPO_DIR_NAME="${REPO_DIR_NAME:-zeppos-jira-workflow}"
 
-# Source checkout, similar to ~/.oh-my-zsh.
-PROJECT_DIR="${PROJECT_DIR:-$HOME/.${APP_NAME}/src}"
+# Source checkout parent. Defaults under the directory where the command is run.
+RUN_DIR="$(pwd)"
+INSTALL_DIR="${INSTALL_DIR:-$RUN_DIR}"
+PROJECT_DIR="${PROJECT_DIR:-}"
 
 # Skill directory inside this repository.
 SKILL_REL_PATH="${SKILL_REL_PATH:-zeppos-jira}"
@@ -43,6 +47,10 @@ JIRA_ACCOUNT="${JIRA_ACCOUNT:-}"
 JIRA_API_TOKEN="${JIRA_API_TOKEN:-${JIRA_TOKEN:-${JIRA_PASSWORD:-}}}"
 RUN_JIRA_INIT="${RUN_JIRA_INIT:-1}"
 INSTALL_JIRA_CLI="${INSTALL_JIRA_CLI:-1}"
+
+# Temporary switch: keep install source-only while the rest of the workflow is
+# being iterated.
+SKIP_POST_SOURCE_STEPS="${SKIP_POST_SOURCE_STEPS:-1}"
 
 say() {
   printf '%s\n' "$*"
@@ -79,20 +87,24 @@ is_disabled() {
 usage() {
   cat <<EOF
 Usage:
-  install.sh              安装并初始化 ${APP_NAME}
-  install.sh install      安装并初始化 ${APP_NAME}
-  install.sh update       更新工程源码，并尝试更新 jira-cli
+  install.sh [安装父目录]           下载源码到父目录/${REPO_DIR_NAME}；默认：当前目录
+  install.sh install [安装父目录]   下载源码到父目录/${REPO_DIR_NAME}；默认：当前目录
+  install.sh install --path PATH    下载源码到 PATH/${REPO_DIR_NAME}
+  install.sh update [安装父目录]    更新 PATH/${REPO_DIR_NAME}；默认：当前目录
   install.sh help         显示帮助
 
 One-line install:
   sh -c "\$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)"
+  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)" -- /path/to/parent
 
 Environment:
   APP_NAME                本地管理命令名，默认：zeppos-jira
   REPO_URL                Git 仓库地址，默认：${REPO_URL}
   REPO_BRANCH             Git 分支，默认：main
   RAW_BASE_URL            raw 文件基础 URL
-  PROJECT_DIR             源码下载目录，默认：~/.zeppos-jira/src
+  REPO_DIR_NAME           源码目录名，默认：zeppos-jira-workflow
+  INSTALL_DIR             源码安装父目录，默认：当前目录
+  PROJECT_DIR             精确源码目录，兼容旧变量；优先级高于 INSTALL_DIR
   SKILL_REL_PATH          工程内 skill 目录，默认：zeppos-jira
   SKILL_INSTALL_DIR       skill 安装目录，默认：${DEFAULT_SKILL_INSTALL_DIR}
   BIN_DIR                 本地命令安装目录，默认：~/.local/bin
@@ -101,6 +113,7 @@ Environment:
   JIRA_API_TOKEN          Jira 密码或 API Token，也兼容 JIRA_TOKEN/JIRA_PASSWORD
   INSTALL_JIRA_CLI        是否自动安装 jira-cli，默认：1；设为 0 跳过
   RUN_JIRA_INIT           是否执行 jira init，默认：1；设为 0 跳过
+  SKIP_POST_SOURCE_STEPS  临时开关：下载源码后跳过后续初始化，默认：1
   JIRA_CLI_INSTALL_URL    jira-cli 子安装脚本 raw URL
   JIRA_CLI_UPDATE_CMD     自定义 jira-cli 升级命令
 EOF
@@ -194,6 +207,21 @@ shell_quote() {
   printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
 }
 
+is_empty_dir() {
+  [ -d "$1" ] || return 1
+  [ -z "$(ls -A "$1" 2>/dev/null)" ]
+}
+
+set_project_dir_from_install_dir() {
+  INSTALL_DIR="$1"
+
+  if [ "$(basename "$INSTALL_DIR")" = "$REPO_DIR_NAME" ]; then
+    PROJECT_DIR="$INSTALL_DIR"
+  else
+    PROJECT_DIR="$INSTALL_DIR/$REPO_DIR_NAME"
+  fi
+}
+
 normalize_jira_server() {
   printf '%s\n' "$1" | sed 's#/*$##'
 }
@@ -232,7 +260,13 @@ ensure_project_source() {
   fi
 
   if [ -e "$PROJECT_DIR" ]; then
-    die "源码安装目录已存在但不是 Git 仓库：$PROJECT_DIR"
+    if is_empty_dir "$PROJECT_DIR"; then
+      say "目标目录已存在且为空，将源码下载到：$PROJECT_DIR"
+      git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$PROJECT_DIR"
+      return 0
+    fi
+
+    die "源码安装目录已存在但不是 Git 仓库或空目录：$PROJECT_DIR"
   fi
 
   say "正在下载工程源码：$REPO_URL"
@@ -591,6 +625,14 @@ resolve_install_config() {
 
 install_flow() {
   ensure_project_source
+
+  if ! is_disabled "$SKIP_POST_SOURCE_STEPS"; then
+    say ""
+    say "源码下载完成，已按临时开关 SKIP_POST_SOURCE_STEPS=1 跳过后续初始化。"
+    say "源码目录：$PROJECT_DIR"
+    return 0
+  fi
+
   ensure_jira_cli
 
   say ""
@@ -611,11 +653,98 @@ install_flow() {
 
 update_flow() {
   update_project_source
+
+  if ! is_disabled "$SKIP_POST_SOURCE_STEPS"; then
+    say ""
+    say "源码更新完成，已按临时开关 SKIP_POST_SOURCE_STEPS=1 跳过后续初始化。"
+    say "源码目录：$PROJECT_DIR"
+    return 0
+  fi
+
   update_jira_cli
   say "更新流程完成。"
 }
 
+parse_path_args() {
+  _install_path_arg=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --path|-p|--dir|--install-dir)
+        _opt="$1"
+        shift
+        [ "$#" -gt 0 ] || die "${_opt} 需要路径参数。"
+        _install_path_arg="$1"
+        ;;
+      --)
+        shift
+        [ "$#" -gt 0 ] || die "-- 后面需要路径参数。"
+        if [ -n "$_install_path_arg" ]; then
+          die "安装路径重复：$_install_path_arg 和 $1"
+        fi
+        _install_path_arg="$1"
+        ;;
+      -*)
+        die "未知参数：$1"
+        ;;
+      *)
+        if [ -n "$_install_path_arg" ]; then
+          die "多余参数：$1"
+        fi
+        _install_path_arg="$1"
+        ;;
+    esac
+
+    shift
+  done
+
+  if [ -n "$_install_path_arg" ]; then
+    set_project_dir_from_install_dir "$_install_path_arg"
+  fi
+}
+
+parse_args() {
+  _cmd="install"
+
+  if [ "$#" -eq 0 ]; then
+    return 0
+  fi
+
+  case "$1" in
+    install)
+      _cmd="install"
+      shift
+      parse_path_args "$@"
+      ;;
+    update|upgrade)
+      _cmd="update"
+      shift
+      parse_path_args "$@"
+      ;;
+    help|-h|--help)
+      _cmd="help"
+      ;;
+    --path|-p|--dir|--install-dir)
+      _cmd="install"
+      parse_path_args "$@"
+      ;;
+    -*)
+      usage
+      die "未知参数：$1"
+      ;;
+    *)
+      _cmd="install"
+      parse_path_args "$@"
+      ;;
+  esac
+}
+
 normalize_paths() {
+  if [ -z "$PROJECT_DIR" ]; then
+    set_project_dir_from_install_dir "$INSTALL_DIR"
+  fi
+
+  INSTALL_DIR="$(expand_user_path "$INSTALL_DIR")"
   PROJECT_DIR="$(expand_user_path "$PROJECT_DIR")"
   BIN_DIR="$(expand_user_path "$BIN_DIR")"
   DEFAULT_SKILL_INSTALL_DIR="$(expand_user_path "$DEFAULT_SKILL_INSTALL_DIR")"
@@ -625,18 +754,17 @@ normalize_paths() {
 }
 
 main() {
+  parse_args "$@"
   normalize_paths
-
-  _cmd="${1:-install}"
 
   case "$_cmd" in
     install)
       install_flow
       ;;
-    update|upgrade)
+    update)
       update_flow
       ;;
-    help|-h|--help)
+    help)
       usage
       ;;
     *)

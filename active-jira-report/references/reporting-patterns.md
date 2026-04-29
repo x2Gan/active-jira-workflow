@@ -105,12 +105,11 @@ Use when the request is based on age thresholds such as "超过 1 周未关闭".
 
 Preferred output:
 
-- retain the raw Markdown table from `query_stale_jiras.py`
-- optionally add a short summary above it:
-  - total stale issues
-  - most affected assignees
-  - oldest issue
-  - notable blockers
+- Use `scripts/generate_stale_jira_report.py` after extracting explicit `project` and `age` from the user's trigger phrase.
+- Do not rely on default project or default age values for stale reports; ask if either trigger parameter is missing.
+- Ensure all pages are fetched before reporting totals because `jira issue list` is capped at 100 issues per page.
+- Produce the project-required table shape from `SKILL.md`, including ranking, Severity/urgency, overdue duration, status, owner, issue summary, and comment summary.
+- Add a short summary above the table with total stale issues, highest urgency, oldest issue, unassigned count, and notable blockers when known.
 
 ## 3. Report writing rules
 

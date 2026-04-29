@@ -16,6 +16,7 @@ Project-specific reporting workflows, defect templates, and summary formats belo
 ## JiraCLI basic capability layer
 
 Consult `references/jira-cli-usage.md` for the full command map, flags, examples, and troubleshooting.
+For Active Jira field IDs, required-field rules, and legal enum values, consult `references/active-jira-rules.md` before creating or editing issues. Prefer that frozen reference over repeatedly querying Jira metadata during normal skill use.
 
 Global conventions:
 
@@ -86,6 +87,22 @@ jira issue delete ISSUE-1 --cascade
 ```
 
 Before deletion, make sure the user explicitly asked for deletion and understands the issue key and cascade scope.
+
+## Active field rules
+
+Use `references/active-jira-rules.md` whenever the user asks for issue creation, issue editing, field extraction, or validation against Active Jira field conventions.
+
+Important fixed rules from that reference:
+
+- Use field IDs for custom fields, for example `customfield_10401` for Severity, `customfield_10404` for 报修平台, and `customfield_11000` for 发现问题阶段.
+- Do not use observed raw/legacy fields for create/edit unless Jira metadata is refreshed and confirms they are editable. In particular, use `customfield_10800` for Products instead of raw `customfield_11400`, and use `customfield_10716` for 问题概率 instead of raw `customfield_10312`.
+- For Active Bug creation, required fields are `project`, `issuetype`, `summary`, `security`, `customfield_10401`, `customfield_10404`, and `customfield_11000`.
+- For Epic creation, also include `customfield_10103` / Epic Name. For Sub-task creation, also include `parent`.
+- Do not use frozen enum values for dynamic fields such as `project`, `versions`, `fixVersions`, `components`, `customfield_10800`, `customfield_12700`, `status`, user fields, `parent`, or `customfield_10101`.
+- For an existing Jira, read actual values with `python active-jira/scripts/query_jira_field_options.py issue <ISSUE-KEY> --fields project,versions,fixVersions,customfield_10800,customfield_12700,status`; the helper uses local `jira issue view --raw` for this path.
+- Before creating a new Jira, query and match legal values with `python active-jira/scripts/query_jira_field_options.py create --project <PROJECT> --issue-type <TYPE> --fields versions,fixVersions,customfield_10800,customfield_12700 --match <keyword>`; the helper uses Jira REST metadata here because JiraCLI does not expose stable createmeta/editmeta commands.
+- Search visible projects with `python active-jira/scripts/query_jira_field_options.py projects --match <keyword>`; the helper uses local `jira project list` for this path.
+- Only refresh Jira metadata when the project changes, a dynamic field is needed, Jira rejects a documented value, or the user explicitly asks for a metadata refresh.
 
 ## Workflow
 

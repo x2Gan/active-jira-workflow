@@ -1,6 +1,6 @@
 ---
 name: active-jira-report
-description: create project-specific Jira reports and rule-based Jira issue drafts for Active teams. use when the user asks for formatted Jira summaries, stale issue reports, weekly or release reports, issue rollups by assignee or status, project-specific report templates, or creation of new bug Jira issues with required fields, custom fields, labels, components, or other project conventions.
+description: create project-specific Jira reports and rule-based Jira issue drafts for Active teams. use when the user asks for formatted Jira summaries, stale or long-unhandled issue reports such as "帮我查询 GENEVA 项目超过 1 周未处理的 Jira 情况", weekly or release reports, issue rollups by assignee or status, project-specific report templates, or creation of new bug Jira issues with required fields, custom fields, labels, components, or other project conventions.
 ---
 
 # Active Jira Report
@@ -11,12 +11,21 @@ Use this skill for Jira workflows that are shaped by project rules rather than b
 
 This skill assumes the generic Jira command layer is available through the sibling `active-jira` skill. In practice, use local `jira` commands directly here, and read `../active-jira/references/jira-cli-usage.md` when you need exact CLI syntax.
 
+For Active Jira field IDs, required-field rules, and legal enum values, read `references/active-jira-rules.md` before drafting or validating Jira creation/editing guidance. The same rules are duplicated in the sibling `active-jira` skill because `doc/` is not available to skills at runtime.
+
 Keep this skill focused on:
 
 - Project-specific report structures and summarization rules
 - Rule-based issue creation flows
 - Field-filling conventions and custom field discovery
 - Reusable Markdown report formats for teams
+
+Script boundary:
+
+- Keep generic Jira mechanics and reusable base-query helpers in `../active-jira`.
+- Treat `../active-jira/scripts/query_stale_jiras.py` as a base stale-query/JQL helper, not as a complete project-report generator.
+- Do not move that script into this skill unless it becomes report-specific and stops being useful as a generic Jira helper.
+- Use `scripts/generate_stale_jira_report.py` for deterministic long-unhandled Jira reports. It has no default project or age; pass both from the user's trigger phrase.
 
 ## Trigger examples
 
@@ -44,6 +53,10 @@ Recommended process:
 Field handling rules:
 
 - Never invent custom field names or IDs.
+- Prefer the frozen field and enum rules in `references/active-jira-rules.md` over repeated metadata queries during normal operation.
+- For Active Bug creation, require `project`, `issuetype`, `summary`, `security`, `customfield_10401`, `customfield_10404`, and `customfield_11000`.
+- Use `customfield_10401` for Severity, `customfield_10800` for Products, and `customfield_10716` for 问题概率. Do not use raw/legacy fields such as `customfield_11400` or `customfield_10312` in create/edit commands unless Jira metadata has just confirmed they are editable.
+- Do not rely on fixed enum values for dynamic fields such as project, versions, fix versions, components, Products, planned version, status, user fields, parent, or epic link. For existing issues, read actual values with `python active-jira/scripts/query_jira_field_options.py issue <ISSUE-KEY> --fields ...`, which uses local `jira issue view --raw`; before creating issues, query legal options with `python active-jira/scripts/query_jira_field_options.py create --project <PROJECT> --issue-type <TYPE> --fields ... --match <keyword>`, which uses Jira REST metadata because JiraCLI does not expose stable createmeta/editmeta commands.
 - Reuse labels, components, fix versions, and severity vocabulary already present in the project.
 - When the user says "自动填写", infer only from project examples, not from generic Jira assumptions.
 - If the user asks to actually create the issue, ensure they have given explicit intent to mutate Jira.
@@ -77,10 +90,18 @@ Preferred report sections:
 
 Use this workflow when the user asks for "长期未处理 Jira", "超过 N 天/周/月未处理", "stale issues", or over-age non-closed Jira reports.
 
+Execution contract:
+
+- This workflow must produce a rule-compliant report, not just a raw query table.
+- Never trust a single `jira issue list` call as complete when result size matters. JiraCLI list commands page at 100 issues; fetch all pages before reporting totals.
+- Do not use the current `query_stale_jiras.py` table as the final report when the required fields include Severity, overdue duration, ranking, or comments. Use `generate_stale_jira_report.py` for the full report.
+- Project and age are mandatory trigger parameters. Do not silently default to `GENEVA`, `1w`, or the JiraCLI default project; if either is missing, ask one focused question before running the report generator.
+- Prefer read-only commands. Do not create, edit, transition, comment on, or assign Jira issues unless the user explicitly requests a mutation.
+
 Parameter extraction:
 
-- `project`: Jira project key such as `GENEVA`. If absent, use the configured JiraCLI default project only when it is clear; otherwise ask one focused question.
-- `age`: threshold such as `7d`, `1w`, `14d`, `1mo`, or Chinese inputs like `30天` and `1周`. Treat 1 week as 7 days and 1 month as 30 days.
+- `project`: Jira project key such as `GENEVA`, extracted from the user's trigger phrase. If absent, ask one focused question.
+- `age`: threshold such as `7d`, `1w`, `14d`, `1mo`, or Chinese inputs like `30天` and `1周`, extracted from the user's trigger phrase. Treat 1 week as 7 days and 1 month as 30 days. If absent, ask one focused question.
 - Optional filters: assignee, status, component, version, label, or extra JQL from the user.
 
 Default "unhandled" definition:
@@ -90,22 +111,41 @@ Default "unhandled" definition:
 - For GENEVA, default to `status in (Open, "In Progress", Reopened, Resolved, "In Review", Pending) AND resolution = Unresolved`.
 - For other projects, prefer the project's known status convention. If unknown, use `status not in (Closed) AND resolution = Unresolved`.
 
-Run the shared script for the base query:
+After extracting `project` and `age`, use the report generator:
 
 ```bash
-python ../active-jira/scripts/query_stale_jiras.py --project <PROJECT> --age <AGE>
+python active-jira-report/scripts/generate_stale_jira_report.py --project <PROJECT> --age <AGE>
 ```
 
-Useful variants:
+Useful explicit examples:
 
 ```bash
-python ../active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1mo
-python ../active-jira/scripts/query_stale_jiras.py --project GENEVA --age 14d
-python ../active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w --assignee-current-user
-python ../active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w --dry-run
+python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w
+python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 14d --assignee-current-user
+python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1mo --dry-run
 ```
 
-Always keep query provenance in the report: query time, command, project, age threshold, and generated JQL. Use `--dry-run` first when you need to show or verify the generated JQL.
+Useful generator options:
+
+- `--comments none|top|all`: default is `none`; use `top --comments-top <N>` for only the highest-risk rows.
+- `--enrich-details missing-severity|all|none`: default is `missing-severity`, so Priority does not prevent fetching a missing true Severity field.
+- `--severity-field <FIELD_OR_PATH>`: add a project-specific Severity field path when known.
+- `--input-json <FILE_OR_->`: generate a report from saved Jira raw JSON without querying live Jira, useful for testing or replay.
+
+Always keep query provenance in the report: query time, command, project, age threshold, and generated JQL.
+
+The generator performs the two-stage query process internally:
+
+1. Generate and inspect the JQL with `--dry-run`.
+2. Fetch all matching issues with explicit JiraCLI pagination, 100 at a time:
+
+```bash
+jira issue list --raw --paginate 0:100 -q '<JQL>'
+jira issue list --raw --paginate 100:100 -q '<JQL>'
+jira issue list --raw --paginate 200:100 -q '<JQL>'
+```
+
+Continue until a page returns fewer than 100 issues. Merge the raw JSON pages into one working set before computing counts, sorting, or summaries. If the generator fails, report the failed command and generated JQL rather than inventing results.
 
 If the script table does not include all required report fields, enrich each matching issue with read-only detail commands:
 
@@ -116,6 +156,14 @@ jira issue view <ISSUE-KEY> --comments 5
 
 Only read fields needed for the report: issue key, created time, assignee, status, Severity/Priority, Summary, Description, and recent comments. Do not create, edit, transition, comment on, or assign Jira issues unless the user explicitly requests that mutation.
 
+Field discovery and enrichment:
+
+- Inspect several representative issues with `jira issue view <ISSUE-KEY> --raw` before finalizing Severity mapping, especially when the target project differs from the frozen Active Jira rules.
+- Prefer a true Jira `Severity` field. If field names are not exposed, look for project evidence in custom fields; in the current Active Jira rules, `customfield_10401.value` is the Severity field, but confirm it if Jira rejects the value or the project metadata differs.
+- Fall back to `Priority` only when no usable Severity field is present.
+- For large result sets, collect complete base fields for all issues, then enrich only the fields that are mandatory for the report. Comments may be sampled or limited by policy, but Severity and sorting inputs must be stable for every listed issue.
+- If comments are too expensive to fetch for every issue, state the comment policy in the report and use `-` for issues whose comments were not fetched.
+
 Data handling rules:
 
 - Query time: record local execution time as `YYYY-MM-DD HH:mm:ss <timezone>`.
@@ -124,6 +172,7 @@ Data handling rules:
 - Severity order: `P0 > P1 > P2 > P3 > P4 > 未设置/未知`. Preserve non-P values such as `Blocker`, `Critical`, `High`, `Medium`, and `Low`; map them only when project evidence or Jira priority order supports the mapping.
 - Issue summary: prefer `Summary`; summarize `Description` into one sentence under about 80 Chinese characters when needed. If description is absent, use `Summary`.
 - Comment summary: optional by default. Include it when the user asks, the issue count is small, or comments contain obvious risk signals such as blockers, waiting, dependency, or confirmation needed; otherwise use `-`.
+- Count integrity: report totals only after all pages have been fetched. If pagination fails midway, report the partial status explicitly instead of presenting a final total.
 
 Report format:
 
@@ -153,6 +202,15 @@ Report format:
 
 Sort the Jira table by severity first (`P0` first), then earlier created time, then issue key for stable output. Make Jira keys clickable when a base URL is available; otherwise show the key. If no matching issues exist, still output the query info, summary, and empty table, and state that no matching Jira issues were found. If JiraCLI fails, report the failed command and reason, then provide the copyable JQL or command instead of inventing results.
 
+Final validation checklist:
+
+- Query provenance is present: time, project, age threshold, command, and JQL.
+- Pagination was completed or any incomplete pagination is disclosed.
+- Summary contains total count, highest urgency, oldest issue, and unassigned count.
+- Table has exactly the required nine columns.
+- Severity source is documented or inferable, and sorting follows Severity, created time, then Jira key.
+- Comment-summary policy is clear when comments are omitted or partially fetched.
+
 ## Report formatting rules
 
 - Default to Markdown output unless the user asks for another format.
@@ -164,6 +222,7 @@ Sort the Jira table by severity first (`P0` first), then earlier created time, t
 
 ## References
 
+- Read `references/active-jira-rules.md` for Active Jira field IDs, issue-type required fields, categories, enum values, and raw-field caveats.
 - Read `references/reporting-patterns.md` for reusable report shapes, defect-creation checklists, and field-filling rules.
 - Read `../active-jira/references/jira-cli-usage.md` when you need exact JiraCLI command syntax.
 

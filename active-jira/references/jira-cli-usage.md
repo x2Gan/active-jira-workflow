@@ -349,7 +349,7 @@ jira serverinfo
 
 ## Default stale GENEVA query
 
-For a user request like "query GENEVA issues older than 1 week that are not closed", build a ZeppOS/Geneva-specific query:
+For a user request like "query GENEVA issues older than 1 week that are not closed", build an Active/Geneva-specific query:
 
 ```jql
 project = GENEVA AND created <= "YYYY-MM-DD" AND status in (Open, "In Progress", Reopened, Resolved, "In Review", Pending) AND resolution = Unresolved
@@ -382,8 +382,8 @@ Use `--dry-run` to see the generated JQL before executing.
 
 The wrapper supports these modes:
 
-- `zeppos-statuses`: `status in (Open, "In Progress", Reopened, Resolved, "In Review", Pending) AND resolution = Unresolved` (default)
-- `zeppos-statuses-no-resolution`: default status whitelist without the resolution clause
+- `active-statuses`: `status in (Open, "In Progress", Reopened, Resolved, "In Review", Pending) AND resolution = Unresolved` (default)
+- `active-statuses-no-resolution`: default status whitelist without the resolution clause
 - `status-not-closed`: `status not in (Closed) AND resolution = Unresolved`
 - `status-not-closed-no-resolution`: `status not in (Closed)`
 - `resolution-unresolved`: `resolution = Unresolved`
@@ -395,7 +395,7 @@ The wrapper supports these modes:
 - `status-category-not-complete`: `statusCategory != Complete`
 - `both`: `resolution = Unresolved AND statusCategory IN ("To Do", "In Progress")`
 
-Prefer `zeppos-statuses` for Geneva unless the user provides a different working Jira filter.
+Prefer `active-statuses` for Geneva unless the user provides a different working Jira filter.
 
 ## Assignee filters
 
@@ -428,7 +428,7 @@ python scripts/query_stale_jiras.py --project GENEVA --age 1w --dry-run
 Then try simpler alternatives:
 
 ```bash
-python scripts/query_stale_jiras.py --project GENEVA --age 1w --closed-mode zeppos-statuses-no-resolution
+python scripts/query_stale_jiras.py --project GENEVA --age 1w --closed-mode active-statuses-no-resolution
 python scripts/query_stale_jiras.py --project GENEVA --age 1w --closed-mode status-not-closed
 python scripts/query_stale_jiras.py --project GENEVA --age 1w --closed-mode resolution-unresolved
 ```

@@ -1,26 +1,29 @@
 #!/usr/bin/env sh
+# Copyright (c) 2026 Zepp Health. All rights reserved.
+# Author: Gan GAN
+# Affiliation: Zepp Health, Active BU AI Lab
 set -eu
 
 ###############################################################################
-# zeppos-jira installer
+# active-jira installer
 #
 # Install:
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)"
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)" -- /path/to/parent
+#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"
+#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)" -- /path/to/parent
 #
 # Update:
-#   zeppos-jira update
+#   active-jira update
 #   or
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)" -- update
+#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)" -- update
 #
 ###############################################################################
 
-APP_NAME="${APP_NAME:-zeppos-jira}"
+APP_NAME="${APP_NAME:-active-jira}"
 INSTALLER_VERSION="${INSTALLER_VERSION:-0.3.0}"
-REPO_URL="${REPO_URL:-https://github.com/active-ailab/zeppos-jira-workflow.git}"
+REPO_URL="${REPO_URL:-https://github.com/active-ailab/active-jira-workflow.git}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
-RAW_BASE_URL="${RAW_BASE_URL:-https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/${REPO_BRANCH}}"
-REPO_DIR_NAME="${REPO_DIR_NAME:-zeppos-jira-workflow}"
+RAW_BASE_URL="${RAW_BASE_URL:-https://raw.githubusercontent.com/active-ailab/active-jira-workflow/${REPO_BRANCH}}"
+REPO_DIR_NAME="${REPO_DIR_NAME:-active-jira-workflow}"
 PROJECT_VERSION_FILE="${PROJECT_VERSION_FILE:-VERSION}"
 
 # Source checkout parent. Defaults under the directory where the command is run.
@@ -29,9 +32,9 @@ INSTALL_DIR="${INSTALL_DIR:-$RUN_DIR}"
 PROJECT_DIR="${PROJECT_DIR:-}"
 
 # Skill directory inside this repository.
-SKILL_REL_PATH="${SKILL_REL_PATH:-zeppos-jira}"
+SKILL_REL_PATH="${SKILL_REL_PATH:-active-jira}"
 
-# Where to install the local management command: zeppos-jira update.
+# Where to install the local management command: active-jira update.
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 
 # Default local skills directory. Used as a fallback when plugin-based prompting
@@ -156,22 +159,22 @@ Usage:
   install.sh help         显示帮助
 
 One-line install:
-  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)"
-  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)" -- /path/to/parent
+  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"
+  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)" -- /path/to/parent
 
 Environment:
-  APP_NAME                本地管理命令名，默认：zeppos-jira
+  APP_NAME                本地管理命令名，默认：active-jira
   INSTALLER_VERSION       安装器版本，默认：${INSTALLER_VERSION}
   REPO_URL                Git 仓库地址，默认：${REPO_URL}
   REPO_BRANCH             Git 分支，默认：main
   RAW_BASE_URL            raw 文件基础 URL
-  REPO_DIR_NAME           源码目录名，默认：zeppos-jira-workflow
+  REPO_DIR_NAME           源码目录名，默认：active-jira-workflow
   PROJECT_VERSION_FILE    源码版本文件，默认：VERSION
   INSTALL_DIR             源码安装父目录，默认：当前目录
   PROJECT_DIR             精确源码目录，兼容旧变量；优先级高于 INSTALL_DIR
-  SKILL_REL_PATH          工程内 skill 目录，默认：zeppos-jira
+  SKILL_REL_PATH          工程内 skill 目录，默认：active-jira
   SKILL_INSTALL_DIR       skill 安装目录；若为空则进入交互式插件安装流程
-  SKILL_PROJECT_ROOT      ZeppOS 项目根目录绝对路径；用于推导插件 skills 目录
+  SKILL_PROJECT_ROOT      Active 项目根目录绝对路径；用于推导插件 skills 目录
   SKILL_PLUGIN            安装目标插件：codex 或 github-copilot
   BIN_DIR                 本地命令安装目录，默认：~/.local/bin
   JIRA_SERVER             Jira 地址，例如：https://jira.example.com
@@ -556,8 +559,8 @@ print_install_plan() {
     _launcher_plan="跳过（SKIP_CONFIG_STEPS=1）"
   fi
 
-  section "zeppos-jira-workflow 安装"
-  say "将为当前机器配置 ZeppOS Jira Agent 工作流："
+  section "active-jira-workflow 安装"
+  say "将为当前机器配置 Active Jira Agent 工作流："
   summary_item "源码目录" "$PROJECT_DIR"
   summary_item "JiraCLI" "$_jira_cli_plan"
   summary_item "Jira 配置" "$_jira_init_plan"
@@ -576,7 +579,7 @@ print_install_plan() {
 }
 
 print_skills_plan() {
-  section "zeppos-jira Skill 安装"
+  section "active-jira Skill 安装"
   say "本流程只准备源码、安装 Skill，并刷新本地管理命令；不会重新执行 jira init。"
   summary_item "源码目录" "$PROJECT_DIR"
   summary_item "Skill" "$SKILL_REL_PATH"
@@ -1123,15 +1126,15 @@ resolve_install_config() {
   fi
 
   detail "请选择 Skill 要安装到哪个 Agent 项目。"
-  detail "Codex: <ZeppOS 项目根目录>/.codex/skills/"
-  detail "GitHub Copilot: <ZeppOS 项目根目录>/.github/skills/"
+  detail "Codex: <Active 项目根目录>/.codex/skills/"
+  detail "GitHub Copilot: <Active 项目根目录>/.github/skills/"
 
   if [ -n "$SKILL_PROJECT_ROOT" ]; then
     _skill_project_root="$(expand_user_path "$SKILL_PROJECT_ROOT")"
     is_absolute_path "$_skill_project_root" || die "SKILL_PROJECT_ROOT 必须是绝对路径。"
     [ -d "$_skill_project_root" ] || die "SKILL_PROJECT_ROOT 指向的目录不存在：$_skill_project_root"
   else
-    _skill_project_root="$(prompt_existing_absolute_dir "ZeppOS 项目根目录绝对路径" "SKILL_PROJECT_ROOT")"
+    _skill_project_root="$(prompt_existing_absolute_dir "Active 项目根目录绝对路径" "SKILL_PROJECT_ROOT")"
   fi
 
   if [ -n "$SKILL_PLUGIN" ]; then

@@ -1,13 +1,13 @@
 ---
-name: zeppos-jira
-description: query and operate ZeppOS Jira through the local open-source ankitpokhrel/jira-cli command. use when the user asks to search, view, summarize, create, edit, transition, comment on, assign, link, clone, watch, worklog, or inspect Jira issues, epics, sprints, releases, projects, boards, current user, or server info. includes a ZeppOS-specific GENEVA stale non-closed Jira reporting scenario as a separate higher-level workflow.
+name: active-jira
+description: query and operate Active Jira through the local open-source ankitpokhrel/jira-cli command. use when the user asks to search, view, summarize, create, edit, transition, comment on, assign, link, clone, watch, worklog, or inspect Jira issues, epics, sprints, releases, projects, boards, current user, or server info. includes an Active-specific GENEVA stale non-closed Jira reporting scenario as a separate higher-level workflow.
 ---
 
-# ZeppOS Jira
+# Active Jira
 
 ## Overview
 
-Use this skill to answer Jira requests through the user's local `ankitpokhrel/jira-cli` installation. Treat JiraCLI as the basic capability layer, and treat ZeppOS/Geneva reporting recipes as higher-level scenarios built on that layer.
+Use this skill to answer Jira requests through the user's local `ankitpokhrel/jira-cli` installation. Treat JiraCLI as the basic capability layer, and treat Active/Geneva reporting recipes as higher-level scenarios built on that layer.
 
 The assistant usually cannot access the user's local Jira unless it can run commands in the user's shell and the local JiraCLI config is authenticated. When local execution is unavailable, provide the exact command the user should run and explain how to paste the output back. For generated report scripts, use `--dry-run` to show the generated JQL and command.
 
@@ -124,9 +124,9 @@ Map natural durations to `--age`:
 - 1 month / 1个月: `--age 1mo` (normalized to 30 days)
 - N days / N天: `--age Nd`
 
-When the user says "超过[duration]没有关闭", interpret it as Jira issues created on or before the local cutoff date and not closed according to the ZeppOS/Geneva workflow.
+When the user says "超过[duration]没有关闭", interpret it as Jira issues created on or before the local cutoff date and not closed according to the Active/Geneva workflow.
 
-## ZeppOS/Geneva status semantics
+## Active/Geneva status semantics
 
 The Geneva Jira workflow statuses observed from the user's Jira filter are:
 
@@ -146,7 +146,7 @@ Do not add `assignee in (currentUser())` unless the user asks for "assigned to m
 
 ## JQL construction
 
-Default query for `GENEVA` and `1w` uses an absolute date plus ZeppOS/Geneva status semantics:
+Default query for `GENEVA` and `1w` uses an absolute date plus Active/Geneva status semantics:
 
 ```jql
 project = GENEVA AND created <= "YYYY-MM-DD" AND status in (Open, "In Progress", Reopened, Resolved, "In Review", Pending) AND resolution = Unresolved
@@ -163,8 +163,8 @@ Date cutoff options:
 
 Non-closed definition options:
 
-- Default `--closed-mode zeppos-statuses`: `status in (Open, "In Progress", Reopened, Resolved, "In Review", Pending) AND resolution = Unresolved`
-- `--closed-mode zeppos-statuses-no-resolution`: same status whitelist without a resolution clause
+- Default `--closed-mode active-statuses`: `status in (Open, "In Progress", Reopened, Resolved, "In Review", Pending) AND resolution = Unresolved`
+- `--closed-mode active-statuses-no-resolution`: same status whitelist without a resolution clause
 - `--closed-mode status-not-closed`: `status not in (Closed) AND resolution = Unresolved`
 - `--closed-mode status-not-closed-no-resolution`: `status not in (Closed)`
 - `--closed-mode resolution-unresolved`: `resolution = Unresolved`
@@ -176,7 +176,7 @@ Non-closed definition options:
 - `--closed-mode status-category-not-complete`: `statusCategory != Complete`
 - `--closed-mode both`: `resolution = Unresolved AND statusCategory IN ("To Do", "In Progress")`
 
-Use `--statuses` to override the ZeppOS open-status whitelist, for example:
+Use `--statuses` to override the Active open-status whitelist, for example:
 
 ```bash
 python scripts/query_stale_jiras.py --project GENEVA --age 1w --statuses 'Open,In Progress,Reopened,In Review,Pending'
@@ -221,7 +221,7 @@ If Jira returns a JQL parse error, ask the user to run `--dry-run` and try these
 
 ```bash
 python scripts/query_stale_jiras.py --project GENEVA --age 1w --dry-run
-python scripts/query_stale_jiras.py --project GENEVA --age 1w --closed-mode zeppos-statuses-no-resolution --dry-run
+python scripts/query_stale_jiras.py --project GENEVA --age 1w --closed-mode active-statuses-no-resolution --dry-run
 python scripts/query_stale_jiras.py --project GENEVA --age 1w --closed-mode status-not-closed --dry-run
 python scripts/query_stale_jiras.py --project GENEVA --age 1w --closed-mode resolution-unresolved --dry-run
 ```

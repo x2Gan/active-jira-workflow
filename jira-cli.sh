@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Zepp Health. All rights reserved.
+# Author: Gan GAN
+# Affiliation: Zepp Health, Active BU AI Lab
 set -euo pipefail
 
 REPO="ankitpokhrel/jira-cli"

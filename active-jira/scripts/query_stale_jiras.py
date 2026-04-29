@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Zepp Health. All rights reserved.
+# Author: Gan GAN
+# Affiliation: Zepp Health, Active BU AI Lab
 """Query stale, non-closed Jira issues with ankitpokhrel/jira-cli.
 
 This wrapper builds a Jira Query Language (JQL) query, runs:
@@ -26,9 +29,9 @@ from typing import Any, Iterable
 
 DEFAULT_COLUMNS = ["Jira", "Assignee", "Status", "Created", "Summary"]
 
-# Geneva/ZeppOS Jira workflow statuses observed from the user's Jira filter.
+# Geneva/Active Jira workflow statuses observed from the user's Jira filter.
 # "Closed" is intentionally excluded from the default stale-not-closed search.
-DEFAULT_ZEPPOS_OPEN_STATUSES = [
+DEFAULT_ACTIVE_OPEN_STATUSES = [
     "Open",
     "In Progress",
     "Reopened",
@@ -36,7 +39,7 @@ DEFAULT_ZEPPOS_OPEN_STATUSES = [
     "In Review",
     "Pending",
 ]
-DEFAULT_ZEPPOS_CLOSED_STATUSES = ["Closed"]
+DEFAULT_ACTIVE_CLOSED_STATUSES = ["Closed"]
 
 
 class UserError(Exception):
@@ -143,13 +146,13 @@ def build_non_closed_clause(
     statuses: list[str] | None,
     closed_statuses: list[str] | None,
 ) -> str:
-    open_statuses = statuses or DEFAULT_ZEPPOS_OPEN_STATUSES
-    closed_status_values = closed_statuses or DEFAULT_ZEPPOS_CLOSED_STATUSES
+    open_statuses = statuses or DEFAULT_ACTIVE_OPEN_STATUSES
+    closed_status_values = closed_statuses or DEFAULT_ACTIVE_CLOSED_STATUSES
     status_category_open = 'statusCategory IN ("To Do", "In Progress")'
 
-    if mode == "zeppos-statuses":
+    if mode == "active-statuses":
         return f"{status_in_clause(open_statuses)} AND resolution = Unresolved"
-    if mode == "zeppos-statuses-no-resolution":
+    if mode == "active-statuses-no-resolution":
         return status_in_clause(open_statuses)
     if mode == "status-not-closed":
         return f"{status_not_in_clause(closed_status_values)} AND resolution = Unresolved"
@@ -398,8 +401,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--closed-mode",
         choices=[
-            "zeppos-statuses",
-            "zeppos-statuses-no-resolution",
+            "active-statuses",
+            "active-statuses-no-resolution",
             "status-not-closed",
             "status-not-closed-no-resolution",
             "resolution-unresolved",
@@ -411,9 +414,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "status-category-not-complete",
             "both",
         ],
-        default="zeppos-statuses",
+        default="active-statuses",
         help=(
-            "How to define non-closed issues. Default: zeppos-statuses, meaning "
+            "How to define non-closed issues. Default: active-statuses, meaning "
             "status in (Open, In Progress, Reopened, Resolved, In Review, Pending) "
             "AND resolution = Unresolved."
         ),
@@ -421,8 +424,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--statuses",
         help=(
-            "Comma-separated status whitelist for --closed-mode zeppos-statuses or "
-            "zeppos-statuses-no-resolution. Default excludes Closed."
+            "Comma-separated status whitelist for --closed-mode active-statuses or "
+            "active-statuses-no-resolution. Default excludes Closed."
         ),
     )
     parser.add_argument(

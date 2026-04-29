@@ -1,8 +1,8 @@
-# zeppos-jira-workflow
+# active-jira-workflow
 
-`zeppos-jira-workflow` 是 ZeppOS 团队使用 Jira 的 Agent 工作流仓库。它把本地开源工具 [`ankitpokhrel/jira-cli`](https://github.com/ankitpokhrel/jira-cli) 封装成一个可安装的 Skill，让 Codex 或 GitHub Copilot 这类 Agent 在需要查询 Jira 时，能按固定方式构造 JQL、调用本地 `jira` 命令，并把结果整理成稳定输出。
+`active-jira-workflow` 是 Active 团队使用 Jira 的 Agent 工作流仓库。它把本地开源工具 [`ankitpokhrel/jira-cli`](https://github.com/ankitpokhrel/jira-cli) 封装成一个可安装的 Skill，让 Codex 或 GitHub Copilot 这类 Agent 在需要查询 Jira 时，能按固定方式构造 JQL、调用本地 `jira` 命令，并把结果整理成稳定输出。
 
-当前内置的 ZeppOS 场景包括：
+当前内置的 Active 场景包括：
 
 - 查询 Jira issue、epic、sprint、release、project、board 等通用 Jira 信息。
 - 查看、创建、编辑、流转、评论、指派、链接、克隆、关注 Jira issue。
@@ -16,43 +16,43 @@
 install.sh                         一键安装、更新、配置入口
 jira-cli.sh                        Linux 下安装/更新 ankitpokhrel/jira-cli 的辅助脚本
 VERSION                            仓库版本
-zeppos-jira/SKILL.md               Agent Skill 主说明
-zeppos-jira/references/            jira-cli 用法参考
-zeppos-jira/scripts/               场景化查询脚本
-zeppos-jira/agents/openai.yaml     Skill 展示信息
+active-jira/SKILL.md               Agent Skill 主说明
+active-jira/references/            jira-cli 用法参考
+active-jira/scripts/               场景化查询脚本
+active-jira/agents/openai.yaml     Skill 展示信息
 ```
 
 安装后会得到三部分能力：
 
-- 源码目录：默认安装到当前目录下的 `zeppos-jira-workflow/`。
+- 源码目录：默认安装到当前目录下的 `active-jira-workflow/`。
 - Skill 软链接：安装到 Codex 或 GitHub Copilot 项目的 skills 目录。
-- 本地管理命令：默认安装为 `~/.local/bin/zeppos-jira`，用于后续更新和查看版本。
+- 本地管理命令：默认安装为 `~/.local/bin/active-jira`，用于后续更新和查看版本。
 
 ## 分发方式
 
 推荐分发方式是一行安装脚本：
 
 ```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"
 ```
 
 也可以指定源码安装父目录：
 
 ```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)" -- /path/to/parent
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)" -- /path/to/parent
 ```
 
 源码会被放到：
 
 ```text
-/path/to/parent/zeppos-jira-workflow
+/path/to/parent/active-jira-workflow
 ```
 
 如果需要先手动克隆仓库，也可以在仓库内执行：
 
 ```bash
-git clone https://github.com/active-ailab/zeppos-jira-workflow.git
-cd zeppos-jira-workflow
+git clone https://github.com/active-ailab/active-jira-workflow.git
+cd active-jira-workflow
 PROJECT_DIR="$(pwd)" sh install.sh
 ```
 
@@ -63,7 +63,7 @@ PROJECT_DIR="$(pwd)" sh install.sh
 交互式完整安装：
 
 ```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"
 ```
 
 安装流程会依次做这些事：
@@ -72,33 +72,33 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-w
 2. 检查本地是否存在 `jira` 命令。
 3. 如果缺少 `jira`，在 Linux 环境下通过 `jira-cli.sh` 安装 `ankitpokhrel/jira-cli`。
 4. 执行 `jira init`，生成 JiraCLI 配置。
-5. 将 `zeppos-jira` Skill 软链接到目标 Agent 的 skills 目录。
-6. 安装本地管理命令 `zeppos-jira`。
+5. 将 `active-jira` Skill 软链接到目标 Agent 的 skills 目录。
+6. 安装本地管理命令 `active-jira`。
 
 安装完成后，如果 `~/.local/bin` 已在 `PATH` 中，可以使用本地管理命令：
 
 ```bash
 # 只安装/更新 Skill 和本地管理命令，不重新初始化 jira-cli
-zeppos-jira skills
+active-jira skills
 
 # 更新本仓库源码，并检查/更新 jira-cli
-zeppos-jira update
+active-jira update
 
 # 查看安装器、源码、jira-cli 版本
-zeppos-jira version
+active-jira version
 
 # 查看安装器帮助
-zeppos-jira help
+active-jira help
 ```
 
 可以用下面的命令确认本地管理命令是否存在，以及它当前指向哪个源码目录：
 
 ```bash
-command -v zeppos-jira
-zeppos-jira version
+command -v active-jira
+active-jira version
 ```
 
-如果还没有安装 `zeppos-jira`，或者它指向旧源码目录，可以在当前仓库中直接使用 `install.sh` 的等价命令：
+如果还没有安装 `active-jira`，或者它指向旧源码目录，可以在当前仓库中直接使用 `install.sh` 的等价命令：
 
 ```bash
 PROJECT_DIR="$(pwd)" sh install.sh skills
@@ -137,9 +137,9 @@ JIRA_INSTALLATION="local" \
 JIRA_AUTH_TYPE="bearer" \
 JIRA_PROJECT="GENEVA" \
 JIRA_BOARD="Geneva Board" \
-SKILL_PROJECT_ROOT="/path/to/zeppos/project" \
+SKILL_PROJECT_ROOT="/path/to/active/project" \
 SKILL_PLUGIN="codex" \
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-workflow/main/install.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"
 ```
 
 Jira Cloud 通常使用：
@@ -172,10 +172,10 @@ PROJECT_DIR="$(pwd)" INSTALL_JIRA_CLI=0 sh install.sh
 
 ### Skill 安装位置
 
-安装器默认会询问 ZeppOS 项目根目录和目标插件：
+安装器默认会询问 Active 项目根目录和目标插件：
 
-- Codex：`<ZeppOS 项目根目录>/.codex/skills/`
-- GitHub Copilot：`<ZeppOS 项目根目录>/.github/skills/`
+- Codex：`<Active 项目根目录>/.codex/skills/`
+- GitHub Copilot：`<Active 项目根目录>/.github/skills/`
 
 也可以直接指定 skills 目录：
 
@@ -186,14 +186,14 @@ PROJECT_DIR="$(pwd)" SKILL_INSTALL_DIR="/path/to/project/.codex/skills" sh insta
 安装结果是一个软链接：
 
 ```text
-/path/to/project/.codex/skills/zeppos-jira -> /path/to/zeppos-jira-workflow/zeppos-jira
+/path/to/project/.codex/skills/active-jira -> /path/to/active-jira-workflow/active-jira
 ```
 
 这样仓库更新后，Skill 内容会跟随源码目录同步更新。
 
 ## SKILL 介绍与用法
 
-`zeppos-jira` Skill 的定位是“Jira 能力底座 + ZeppOS 场景化查询”。
+`active-jira` Skill 的定位是“Jira 能力底座 + Active 场景化查询”。
 
 基础能力来自本地 `jira` 命令，Agent 会优先使用可解析的输出：
 
@@ -227,7 +227,7 @@ jira issue delete ISSUE-1 --cascade
 
 ### GENEVA 过期未关闭 Jira 查询
 
-这是当前内置的 ZeppOS 场景化用法。用户可以直接对 Agent 说：
+这是当前内置的 Active 场景化用法。用户可以直接对 Agent 说：
 
 ```text
 帮我查询GENEVA项目超过1周没有关闭的Jira
@@ -236,16 +236,16 @@ jira issue delete ISSUE-1 --cascade
 Skill 会使用仓库内脚本：
 
 ```bash
-python zeppos-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w
+python active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w
 ```
 
 常用变体：
 
 ```bash
-python zeppos-jira/scripts/query_stale_jiras.py --project GENEVA --age 1mo
-python zeppos-jira/scripts/query_stale_jiras.py --project GENEVA --age 14d
-python zeppos-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w --assignee-current-user
-python zeppos-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w --dry-run
+python active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1mo
+python active-jira/scripts/query_stale_jiras.py --project GENEVA --age 14d
+python active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w --assignee-current-user
+python active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w --dry-run
 ```
 
 输出表格固定为：
@@ -259,20 +259,28 @@ python zeppos-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w --dry-
 project = GENEVA AND created <= "YYYY-MM-DD" AND status in (Open, "In Progress", Reopened, Resolved, "In Review", Pending) AND resolution = Unresolved
 ```
 
-这个场景和 jira-cli 的通用能力是分开的：通用能力负责“怎么查 Jira”，场景化脚本负责“ZeppOS/Geneva 业务口径是什么、结果怎么展示”。
+这个场景和 jira-cli 的通用能力是分开的：通用能力负责“怎么查 Jira”，场景化脚本负责“Active/Geneva 业务口径是什么、结果怎么展示”。
 
 ## 维护与更新
 
 更新源码和 jira-cli：
 
 ```bash
-zeppos-jira update
+active-jira update
 ```
 
 仅查看版本：
 
 ```bash
-zeppos-jira version
+active-jira version
 ```
 
 如果源码目录有本地修改，更新命令不会自动覆盖。请先提交或处理本地修改后再执行更新。
+
+## 作者与版权
+
+作者：Gan GAN
+
+所属机构：Zepp Health, Active BU AI Lab
+
+Copyright (c) 2026 Zepp Health. All rights reserved.

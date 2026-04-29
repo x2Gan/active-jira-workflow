@@ -75,7 +75,7 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/zeppos-jira-w
 5. 将 `zeppos-jira` Skill 软链接到目标 Agent 的 skills 目录。
 6. 安装本地管理命令 `zeppos-jira`。
 
-常用命令：
+安装完成后，如果 `~/.local/bin` 已在 `PATH` 中，可以使用本地管理命令：
 
 ```bash
 # 只安装/更新 Skill 和本地管理命令，不重新初始化 jira-cli
@@ -91,7 +91,23 @@ zeppos-jira version
 zeppos-jira help
 ```
 
-如果 `~/.local/bin` 不在 `PATH` 中，请把下面这行加入 `~/.zshrc` 或 `~/.bashrc`：
+可以用下面的命令确认本地管理命令是否存在，以及它当前指向哪个源码目录：
+
+```bash
+command -v zeppos-jira
+zeppos-jira version
+```
+
+如果还没有安装 `zeppos-jira`，或者它指向旧源码目录，可以在当前仓库中直接使用 `install.sh` 的等价命令：
+
+```bash
+PROJECT_DIR="$(pwd)" sh install.sh skills
+PROJECT_DIR="$(pwd)" sh install.sh update
+PROJECT_DIR="$(pwd)" sh install.sh version
+PROJECT_DIR="$(pwd)" sh install.sh help
+```
+
+如果 `~/.local/bin` 不在 `PATH` 中，请把下面这行加入 `~/.zshrc` 或 `~/.bashrc`，然后重新打开终端：
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"

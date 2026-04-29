@@ -32,7 +32,9 @@ INSTALL_DIR="${INSTALL_DIR:-$RUN_DIR}"
 PROJECT_DIR="${PROJECT_DIR:-}"
 
 # Skill directory inside this repository.
+SKILL_REL_PATH_PROVIDED="${SKILL_REL_PATH+x}"
 SKILL_REL_PATH="${SKILL_REL_PATH:-active-jira}"
+SKILL_REL_PATHS="${SKILL_REL_PATHS:-}"
 
 # Where to install the local management command: active-jira update.
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
@@ -136,6 +138,35 @@ summary_item() {
   say "  - ${_label}: ${_value}"
 }
 
+skill_rel_paths_value() {
+  if [ -n "$SKILL_REL_PATHS" ]; then
+    printf '%s\n' "$SKILL_REL_PATHS"
+    return 0
+  fi
+
+  if [ -n "$SKILL_REL_PATH_PROVIDED" ]; then
+    printf '%s\n' "$SKILL_REL_PATH"
+    return 0
+  fi
+
+  printf '%s\n' "active-jira active-jira-report"
+}
+
+skill_rel_paths_display() {
+  printf '%s\n' "$(skill_rel_paths_value)" | tr ' ' ',' | sed 's/,/, /g'
+}
+
+append_summary_csv() {
+  _current="$1"
+  _value="$2"
+
+  if [ -n "$_current" ]; then
+    printf '%s\n' "$_current, $_value"
+  else
+    printf '%s\n' "$_value"
+  fi
+}
+
 is_disabled() {
   case "${1:-}" in
     0|false|FALSE|no|NO|off|OFF)
@@ -172,7 +203,8 @@ Environment:
   PROJECT_VERSION_FILE    源码版本文件，默认：VERSION
   INSTALL_DIR             源码安装父目录，默认：当前目录
   PROJECT_DIR             精确源码目录，兼容旧变量；优先级高于 INSTALL_DIR
-  SKILL_REL_PATH          工程内 skill 目录，默认：active-jira
+  SKILL_REL_PATH          工程内单个 skill 目录；显式设置后只安装该 skill
+  SKILL_REL_PATHS         工程内多个 skill 目录，使用空格分隔；默认安装：active-jira active-jira-report
   SKILL_INSTALL_DIR       skill 安装目录；若为空则进入交互式插件安装流程
   SKILL_PROJECT_ROOT      Active 项目根目录绝对路径；用于推导插件 skills 目录
   SKILL_PLUGIN            安装目标插件：codex 或 github-copilot
@@ -543,7 +575,7 @@ jira_host_from_url() {
 print_install_plan() {
   _jira_cli_plan="检查本地 jira；缺失时尝试安装"
   _jira_init_plan="执行 jira init，生成本地 JiraCLI 配置"
-  _skill_plan="安装 $SKILL_REL_PATH 到目标 Agent skills 目录"
+  _skill_plan="安装 $(skill_rel_paths_display) 到目标 Agent skills 目录"
   _launcher_plan="$BIN_DIR/$APP_NAME"
 
   if is_disabled "$INSTALL_JIRA_CLI"; then
@@ -582,7 +614,7 @@ print_skills_plan() {
   section "active-jira Skill 安装"
   say "本流程只准备源码、安装 Skill，并刷新本地管理命令；不会重新执行 jira init。"
   summary_item "源码目录" "$PROJECT_DIR"
-  summary_item "Skill" "$SKILL_REL_PATH"
+  summary_item "Skill" "$(skill_rel_paths_display)"
   summary_item "本地命令" "$BIN_DIR/$APP_NAME"
 }
 
@@ -765,10 +797,11 @@ ensure_jira_cli() {
   SUMMARY_JIRA_CLI="$_jira_path"
 }
 
-create_skill_symlink() {
+create_one_skill_symlink() {
   _skill_install_dir="$(expand_user_path "$1")"
-  _skill_src="$PROJECT_DIR/$SKILL_REL_PATH"
-  _skill_name="$(basename "$SKILL_REL_PATH")"
+  _skill_rel_path="$2"
+  _skill_src="$PROJECT_DIR/$_skill_rel_path"
+  _skill_name="$(basename "$_skill_rel_path")"
   _skill_target="$_skill_install_dir/$_skill_name"
 
   [ -d "$_skill_src" ] || die "工程源码中不存在 skill 目录：$_skill_src"
@@ -780,8 +813,8 @@ create_skill_symlink() {
 
     if [ "$_current_link" = "$_skill_src" ]; then
       detail "Skill 软链接已存在：$_skill_target"
-      SUMMARY_SKILL_TARGET="$_skill_target"
-      SUMMARY_SKILL_SOURCE="$_skill_src"
+      SUMMARY_SKILL_TARGET="$(append_summary_csv "$SUMMARY_SKILL_TARGET" "$_skill_target")"
+      SUMMARY_SKILL_SOURCE="$(append_summary_csv "$SUMMARY_SKILL_SOURCE" "$_skill_src")"
       return 0
     fi
 
@@ -795,8 +828,16 @@ create_skill_symlink() {
 
   ln -s "$_skill_src" "$_skill_target"
   detail "已创建 Skill 软链接：$_skill_target"
-  SUMMARY_SKILL_TARGET="$_skill_target"
-  SUMMARY_SKILL_SOURCE="$_skill_src"
+  SUMMARY_SKILL_TARGET="$(append_summary_csv "$SUMMARY_SKILL_TARGET" "$_skill_target")"
+  SUMMARY_SKILL_SOURCE="$(append_summary_csv "$SUMMARY_SKILL_SOURCE" "$_skill_src")"
+}
+
+create_skill_symlinks() {
+  _skill_install_dir="$1"
+
+  for _skill_rel_path in $(skill_rel_paths_value); do
+    create_one_skill_symlink "$_skill_install_dir" "$_skill_rel_path"
+  done
 }
 
 write_netrc() {
@@ -999,11 +1040,12 @@ install_launcher() {
     printf 'REPO_DIR_NAME=%s\n' "$(shell_quote "$REPO_DIR_NAME")"
     printf 'PROJECT_VERSION_FILE=%s\n' "$(shell_quote "$PROJECT_VERSION_FILE")"
     printf 'SKILL_REL_PATH=%s\n' "$(shell_quote "$SKILL_REL_PATH")"
+    printf 'SKILL_REL_PATHS=%s\n' "$(shell_quote "$(skill_rel_paths_value)")"
     printf 'JIRA_CLI_REPO=%s\n' "$(shell_quote "$JIRA_CLI_REPO")"
     printf 'JIRA_CLI_LATEST_URL=%s\n' "$(shell_quote "$JIRA_CLI_LATEST_URL")"
     printf 'JIRA_CLI_SCRIPT_REL_PATH=%s\n' "$(shell_quote "$JIRA_CLI_SCRIPT_REL_PATH")"
     printf 'JIRA_CLI_INSTALL_URL=%s\n' "$(shell_quote "$JIRA_CLI_INSTALL_URL")"
-    printf 'export APP_NAME INSTALLER_VERSION PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL REPO_DIR_NAME PROJECT_VERSION_FILE SKILL_REL_PATH JIRA_CLI_REPO JIRA_CLI_LATEST_URL JIRA_CLI_SCRIPT_REL_PATH JIRA_CLI_INSTALL_URL\n'
+    printf 'export APP_NAME INSTALLER_VERSION PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL REPO_DIR_NAME PROJECT_VERSION_FILE SKILL_REL_PATH SKILL_REL_PATHS JIRA_CLI_REPO JIRA_CLI_LATEST_URL JIRA_CLI_SCRIPT_REL_PATH JIRA_CLI_INSTALL_URL\n'
     printf 'exec sh %s "$@"\n' "$(shell_quote "$PROJECT_DIR/install.sh")"
   } > "$_launcher"
 
@@ -1180,7 +1222,7 @@ install_flow() {
 
   step_start 4 5 "安装 Agent Skill"
   resolve_install_config
-  create_skill_symlink "$_skill_install_path"
+  create_skill_symlinks "$_skill_install_path"
   step_done
 
   step_start 5 5 "安装本地管理命令"
@@ -1192,7 +1234,7 @@ install_flow() {
 
 run_skill_install_steps() {
   resolve_install_config
-  create_skill_symlink "$_skill_install_path"
+  create_skill_symlinks "$_skill_install_path"
   install_launcher
 }
 
@@ -1205,7 +1247,7 @@ install_skills_flow() {
 
   step_start 2 3 "安装 Agent Skill"
   resolve_install_config
-  create_skill_symlink "$_skill_install_path"
+  create_skill_symlinks "$_skill_install_path"
   step_done
 
   step_start 3 3 "安装本地管理命令"

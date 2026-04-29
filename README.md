@@ -1,12 +1,14 @@
 # active-jira-workflow
 
-`active-jira-workflow` 是 Active 团队使用 Jira 的 Agent 工作流仓库。它把本地开源工具 [`ankitpokhrel/jira-cli`](https://github.com/ankitpokhrel/jira-cli) 封装成一个可安装的 Skill，让 Codex 或 GitHub Copilot 这类 Agent 在需要查询 Jira 时，能按固定方式构造 JQL、调用本地 `jira` 命令，并把结果整理成稳定输出。
+`active-jira-workflow` 是 Active 团队使用 Jira 的 Agent 工作流仓库。它把本地开源工具 [`ankitpokhrel/jira-cli`](https://github.com/ankitpokhrel/jira-cli) 封装成一组可安装的 Skills，让 Codex 或 GitHub Copilot 这类 Agent 在需要查询 Jira、整理报告或按项目规则建单时，能按固定方式构造 JQL、调用本地 `jira` 命令，并把结果整理成稳定输出。
 
 当前内置的 Active 场景包括：
 
 - 查询 Jira issue、epic、sprint、release、project、board 等通用 Jira 信息。
 - 查看、创建、编辑、流转、评论、指派、链接、克隆、关注 Jira issue。
 - 查询 `GENEVA` 项目中超过指定时间仍未关闭的 Jira，并输出标准 Markdown 表格。
+- 按项目规则整理 Jira 周报、风险报告、发布报告、负责人汇总。
+- 按项目约定创建新的缺陷 Jira，并补齐特殊字段或自定义字段。
 
 ## 仓库摘要
 
@@ -17,15 +19,18 @@ install.sh                         一键安装、更新、配置入口
 jira-cli.sh                        Linux 下安装/更新 ankitpokhrel/jira-cli 的辅助脚本
 VERSION                            仓库版本
 active-jira/SKILL.md               Agent Skill 主说明
+active-jira-report/SKILL.md        场景化报告与规则化建单 Skill
 active-jira/references/            jira-cli 用法参考
 active-jira/scripts/               场景化查询脚本
 active-jira/agents/openai.yaml     Skill 展示信息
+active-jira-report/references/     报告模板与建单规则参考
+active-jira-report/agents/openai.yaml Skill 展示信息
 ```
 
 安装后会得到三部分能力：
 
 - 源码目录：默认安装到当前目录下的 `active-jira-workflow/`。
-- Skill 软链接：安装到 Codex 或 GitHub Copilot 项目的 skills 目录。
+- Skill 软链接：默认同时安装 `active-jira` 和 `active-jira-report` 到 Codex 或 GitHub Copilot 项目的 skills 目录。
 - 本地管理命令：默认安装为 `~/.local/bin/active-jira`，用于后续更新和查看版本。
 
 ## 分发方式
@@ -72,7 +77,7 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-w
 2. 检查本地是否存在 `jira` 命令。
 3. 如果缺少 `jira`，在 Linux 环境下通过 `jira-cli.sh` 安装 `ankitpokhrel/jira-cli`。
 4. 执行 `jira init`，生成 JiraCLI 配置。
-5. 将 `active-jira` Skill 软链接到目标 Agent 的 skills 目录。
+5. 将 `active-jira` 和 `active-jira-report` 两个 Skill 软链接到目标 Agent 的 skills 目录。
 6. 安装本地管理命令 `active-jira`。
 
 安装完成后，如果 `~/.local/bin` 已在 `PATH` 中，可以使用本地管理命令：
@@ -187,13 +192,19 @@ PROJECT_DIR="$(pwd)" SKILL_INSTALL_DIR="/path/to/project/.codex/skills" sh insta
 
 ```text
 /path/to/project/.codex/skills/active-jira -> /path/to/active-jira-workflow/active-jira
+/path/to/project/.codex/skills/active-jira-report -> /path/to/active-jira-workflow/active-jira-report
 ```
 
 这样仓库更新后，Skill 内容会跟随源码目录同步更新。
 
 ## SKILL 介绍与用法
 
-`active-jira` Skill 的定位是“Jira 能力底座 + Active 场景化查询”。
+这个仓库现在拆成两个并列 Skill：
+
+- `active-jira`：通用 Jira 能力底座，负责查询、查看、编辑、流转等原子能力。
+- `active-jira-report`：场景化工作流，负责报告整理、项目规则汇总、按约定创建缺陷 Jira。
+
+### `active-jira`
 
 基础能力来自本地 `jira` 命令，Agent 会优先使用可解析的输出：
 
@@ -223,6 +234,23 @@ jira issue assign ISSUE-1 $(jira me)
 ```bash
 jira issue delete ISSUE-1
 jira issue delete ISSUE-1 --cascade
+```
+
+### `active-jira-report`
+
+这个 Skill 负责把 Jira 数据整理成适合项目汇报和规则执行的结果，比如：
+
+- GENEVA 过期未关闭 Jira 查询
+- 按 assignee / status / risk 汇总 Jira
+- 生成周报、发布风险报告、遗留问题报告
+- 按项目要求创建 defect Jira，并优先复用已有字段约定
+
+用户可以直接对 Agent 说：
+
+```text
+帮我按 GENEVA 项目要求整理一份 Jira 周报
+帮我汇总这个项目的 Jira 风险，突出 blocker 和超过一周未关闭的问题
+帮我创建一个新的 defect Jira，按项目规范自动填写字段
 ```
 
 ### GENEVA 过期未关闭 Jira 查询
@@ -260,6 +288,14 @@ project = GENEVA AND created <= "YYYY-MM-DD" AND status in (Open, "In Progress",
 ```
 
 这个场景和 jira-cli 的通用能力是分开的：通用能力负责“怎么查 Jira”，场景化脚本负责“Active/Geneva 业务口径是什么、结果怎么展示”。
+
+如果你只想安装其中一个 Skill，也可以覆盖默认行为：
+
+```bash
+PROJECT_DIR="$(pwd)" SKILL_REL_PATH="active-jira" sh install.sh skills
+PROJECT_DIR="$(pwd)" SKILL_REL_PATH="active-jira-report" sh install.sh skills
+PROJECT_DIR="$(pwd)" SKILL_REL_PATHS="active-jira active-jira-report" sh install.sh skills
+```
 
 ## 维护与更新
 

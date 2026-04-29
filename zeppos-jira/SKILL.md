@@ -1,15 +1,89 @@
 ---
 name: zeppos-jira
-description: query zeppos jira information through the local open-source ankitpokhrel/jira-cli command. use when the user asks to search jira tickets, especially geneva project tickets that have not been closed for a duration such as 1 week, 1 month, or n days, and wants a table containing jira key, assignee, status, created time, and issue summary. supports zeppos-specific geneva status workflows and future jira reporting scenarios by constructing jql and using the bundled wrapper script.
+description: query and operate ZeppOS Jira through the local open-source ankitpokhrel/jira-cli command. use when the user asks to search, view, summarize, create, edit, transition, comment on, assign, link, clone, watch, worklog, or inspect Jira issues, epics, sprints, releases, projects, boards, current user, or server info. includes a ZeppOS-specific GENEVA stale non-closed Jira reporting scenario as a separate higher-level workflow.
 ---
 
 # ZeppOS Jira
 
 ## Overview
 
-Use this skill to answer Jira reporting requests by wrapping the user's local `ankitpokhrel/jira-cli` installation. The first supported scenario is stale, non-closed Jira issues in the `GENEVA` project for a user-specified age window.
+Use this skill to answer Jira requests through the user's local `ankitpokhrel/jira-cli` installation. Treat JiraCLI as the basic capability layer, and treat ZeppOS/Geneva reporting recipes as higher-level scenarios built on that layer.
 
-The assistant usually cannot access the user's local Jira directly. When local execution is unavailable, provide the exact command the user should run and explain how to paste the output back, or use `--dry-run` to show the generated JQL and command.
+The assistant usually cannot access the user's local Jira unless it can run commands in the user's shell and the local JiraCLI config is authenticated. When local execution is unavailable, provide the exact command the user should run and explain how to paste the output back. For generated report scripts, use `--dry-run` to show the generated JQL and command.
+
+## JiraCLI basic capability layer
+
+Prefer the native `jira` command when the user asks for generic Jira information or operations. Consult `references/jira-cli-usage.md` for the full command map, flags, examples, and troubleshooting.
+
+Global conventions:
+
+- Use `jira ... -p PROJECT` to select a project when the user names a project key, or put `project = KEY` directly in JQL for raw searches.
+- Use `jira ... -c /path/to/config.yml` or `JIRA_CONFIG_FILE=/path/to/config.yml` when the user has multiple Jira configs.
+- Add `--debug` only for troubleshooting.
+- For Agent parsing, prefer `--raw` JSON when available. Use `--plain --columns ... --no-headers` for simple shell pipelines.
+- Use `--paginate <from>:<limit>` or `--paginate <limit>` when result size matters. JiraCLI fetches at most 100 items at a time for list-style commands.
+- Only perform mutating commands when the user clearly asks to create, update, transition, comment, assign, link, delete, add to epic/sprint, close sprint, or log work. For ambiguous requests, query first.
+
+Core query and read commands:
+
+```bash
+jira issue list --raw -q '<JQL>'
+jira issue list --plain --columns key,assignee,status,created,summary --no-headers -q '<JQL>'
+jira issue view ISSUE-1 --raw
+jira issue view ISSUE-1 --comments 5
+jira epic list --table --plain
+jira epic list EPIC-1 --plain --columns type,key,summary,status
+jira sprint list --table --plain --columns id,name,start,end,state
+jira sprint list --current --plain --columns key,assignee,status,summary
+jira release list -p PROJECT
+jira project list
+jira board list -p PROJECT
+jira me
+jira serverinfo
+```
+
+Common `jira issue list` filters:
+
+```bash
+jira issue list -a$(jira me)                 # assigned to me
+jira issue list -ax                          # unassigned
+jira issue list -w                           # watched by me
+jira issue list -s"In Progress" -yHigh       # status and priority
+jira issue list -s~Done --created-before -24w -a~x
+jira issue list --created week
+jira issue list --updated -30m
+jira issue list -q 'project = GENEVA AND summary ~ "crash"'
+```
+
+Use these mutating commands only for explicit user intent:
+
+```bash
+jira issue create -tTask -s"Summary" -b"Description" --no-input
+jira issue edit ISSUE-1 -s"New summary" --no-input
+jira issue move ISSUE-1 "In Progress" --comment "Started working on it"
+jira issue assign ISSUE-1 $(jira me)
+jira issue comment add ISSUE-1 "Comment body"
+jira issue worklog add ISSUE-1 "1h 30m" --comment "Investigation" --no-input
+jira issue link ISSUE-1 ISSUE-2 Blocks
+jira issue link remote ISSUE-1 https://example.com "Reference"
+jira issue unlink ISSUE-1 ISSUE-2
+jira issue clone ISSUE-1 -s"Modified summary"
+jira issue watch ISSUE-1 $(jira me)
+jira epic create -n"Epic name" -s"Epic summary" --no-input
+jira epic add EPIC-1 ISSUE-1 ISSUE-2
+jira epic remove ISSUE-1 ISSUE-2
+jira sprint add SPRINT_ID ISSUE-1 ISSUE-2
+jira sprint close SPRINT_ID
+```
+
+High-risk destructive command:
+
+```bash
+jira issue delete ISSUE-1
+jira issue delete ISSUE-1 --cascade
+```
+
+Before deletion, make sure the user explicitly asked for deletion and understands the issue key and cascade scope.
 
 ## Primary scenario: stale non-closed GENEVA Jira issues
 
@@ -132,6 +206,16 @@ Consult `references/jira-cli-usage.md` when you need details about JiraCLI setup
 If the script reports that `jira` cannot be found, ask the user to install `ankitpokhrel/jira-cli`, ensure it is on `PATH`, or pass `--jira-bin /path/to/jira`.
 
 If Jira authentication fails, ask the user to run `jira init` and verify `JIRA_API_TOKEN`, `JIRA_AUTH_TYPE`, or `JIRA_CONFIG_FILE` as appropriate for their Jira installation.
+
+For JiraCLI setup:
+
+```bash
+jira init
+jira init --installation cloud --server https://example.atlassian.net --login user@example.com --project GENEVA
+jira init --installation local --server https://jira.example.com --login username --auth-type bearer --project GENEVA
+```
+
+JiraCLI supports basic auth, bearer/PAT, and mtls. For Jira Cloud, export `JIRA_API_TOKEN` before `jira init`. For on-premise PAT, export `JIRA_API_TOKEN` and set `JIRA_AUTH_TYPE=bearer`.
 
 If Jira returns a JQL parse error, ask the user to run `--dry-run` and try these fallback modes in order:
 

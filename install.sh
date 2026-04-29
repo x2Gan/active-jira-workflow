@@ -105,6 +105,7 @@ Usage:
   install.sh [安装父目录]           下载源码到父目录/${REPO_DIR_NAME}；默认：当前目录
   install.sh install [安装父目录]   下载源码到父目录/${REPO_DIR_NAME}；默认：当前目录
   install.sh install --path PATH    下载源码到 PATH/${REPO_DIR_NAME}
+  install.sh skills [安装父目录]    仅安装 skill 和本地命令
   install.sh update [安装父目录]    先更新源码，再检查/更新 jira-cli
   install.sh version [安装父目录]   显示安装器、源码、jira-cli 版本
   install.sh help         显示帮助
@@ -1027,15 +1028,30 @@ install_flow() {
   say ""
   say "开始初始化 skill 和本地命令。"
 
-  resolve_install_config
-  create_skill_symlink "$_skill_install_path"
-  install_launcher
+  run_skill_install_steps
 
   say ""
   say "安装完成。"
   say "源码目录：$PROJECT_DIR"
   say "skill 目录：$(expand_user_path "$_skill_install_path")/$(basename "$SKILL_REL_PATH")"
   say "更新命令：$APP_NAME update"
+}
+
+run_skill_install_steps() {
+  resolve_install_config
+  create_skill_symlink "$_skill_install_path"
+  install_launcher
+}
+
+install_skills_flow() {
+  ensure_project_source
+  run_skill_install_steps
+
+  say ""
+  say "skill 安装完成。"
+  say "源码目录：$PROJECT_DIR"
+  say "skill 目录：$(expand_user_path "$_skill_install_path")/$(basename "$SKILL_REL_PATH")"
+  say "本地命令：$APP_NAME"
 }
 
 update_flow() {
@@ -1129,6 +1145,11 @@ parse_args() {
       shift
       parse_path_args "$@"
       ;;
+    skills|skill|install-skills|install-skill)
+      _cmd="skills"
+      shift
+      parse_path_args "$@"
+      ;;
     update|upgrade)
       _cmd="update"
       shift
@@ -1181,6 +1202,9 @@ main() {
   case "$_cmd" in
     install)
       install_flow
+      ;;
+    skills)
+      install_skills_flow
       ;;
     update)
       update_flow

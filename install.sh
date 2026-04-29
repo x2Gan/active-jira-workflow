@@ -1041,15 +1041,9 @@ install_flow() {
 update_flow() {
   update_project_source
   update_jira_cli
-
-  if ! is_disabled "$SKIP_CONFIG_STEPS"; then
-    say ""
-    say "源码和 jira-cli 更新检查完成，已按 SKIP_CONFIG_STEPS 跳过额外配置。"
-    say "源码目录：$PROJECT_DIR"
-    return 0
-  fi
-
+  say ""
   say "更新流程完成。"
+  say "源码目录：$PROJECT_DIR"
 }
 
 version_flow() {

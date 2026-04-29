@@ -34,7 +34,8 @@ SKILL_REL_PATH="${SKILL_REL_PATH:-zeppos-jira}"
 # Where to install the local management command: zeppos-jira update.
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 
-# Codex skill install directory. Override this if you use another skills path.
+# Default local skills directory. Used as a fallback when plugin-based prompting
+# is skipped and can still be overridden explicitly.
 DEFAULT_SKILL_INSTALL_DIR="${DEFAULT_SKILL_INSTALL_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
 
 # jira-cli installer bundled in this repository.
@@ -48,6 +49,8 @@ JIRA_CLI_UPDATE_CMD="${JIRA_CLI_UPDATE_CMD:-}"
 
 # Optional non-interactive configuration.
 SKILL_INSTALL_DIR="${SKILL_INSTALL_DIR:-}"
+SKILL_PROJECT_ROOT="${SKILL_PROJECT_ROOT:-}"
+SKILL_PLUGIN="${SKILL_PLUGIN:-}"
 JIRA_SERVER="${JIRA_SERVER:-}"
 JIRA_ACCOUNT="${JIRA_ACCOUNT:-}"
 JIRA_API_TOKEN="${JIRA_API_TOKEN:-${JIRA_TOKEN:-${JIRA_PASSWORD:-}}}"
@@ -61,9 +64,8 @@ INIT_JIRA_CLI="${INIT_JIRA_CLI:-1}"
 RUN_JIRA_INIT="${RUN_JIRA_INIT:-1}"
 INSTALL_JIRA_CLI="${INSTALL_JIRA_CLI:-1}"
 
-# Temporary switch: keep skill/launcher setup disabled while the rest of the
-# workflow is being iterated. jira-cli installation and init still run.
-SKIP_CONFIG_STEPS="${SKIP_CONFIG_STEPS:-${SKIP_POST_SOURCE_STEPS:-1}}"
+# Optional switch to skip skill/launcher setup after jira-cli initialization.
+SKIP_CONFIG_STEPS="${SKIP_CONFIG_STEPS:-${SKIP_POST_SOURCE_STEPS:-0}}"
 
 say() {
   printf '%s\n' "$*"
@@ -122,7 +124,9 @@ Environment:
   INSTALL_DIR             源码安装父目录，默认：当前目录
   PROJECT_DIR             精确源码目录，兼容旧变量；优先级高于 INSTALL_DIR
   SKILL_REL_PATH          工程内 skill 目录，默认：zeppos-jira
-  SKILL_INSTALL_DIR       skill 安装目录，默认：${DEFAULT_SKILL_INSTALL_DIR}
+  SKILL_INSTALL_DIR       skill 安装目录；若为空则进入交互式插件安装流程
+  SKILL_PROJECT_ROOT      ZeppOS 项目根目录绝对路径；用于推导插件 skills 目录
+  SKILL_PLUGIN            安装目标插件：codex 或 github-copilot
   BIN_DIR                 本地命令安装目录，默认：~/.local/bin
   JIRA_SERVER             Jira 地址，例如：https://jira.example.com
   JIRA_ACCOUNT            Jira 账号
@@ -136,7 +140,7 @@ Environment:
   INIT_JIRA_CLI           是否执行 jira-cli 初始化，默认：1
   INSTALL_JIRA_CLI        是否自动安装 jira-cli，默认：1；设为 0 跳过
   RUN_JIRA_INIT           兼容旧变量；设为 0 时跳过 jira-cli 初始化
-  SKIP_CONFIG_STEPS       临时开关：跳过 skill/launcher 配置，默认：1
+  SKIP_CONFIG_STEPS       是否跳过 skill/launcher 配置，默认：0
   JIRA_CLI_LATEST_URL     jira-cli latest release URL，默认：GitHub releases/latest
   JIRA_CLI_INSTALL_URL    jira-cli 子安装脚本 raw URL
   JIRA_CLI_UPDATE_CMD     自定义 jira-cli 升级命令
@@ -223,6 +227,17 @@ expand_user_path() {
       ;;
     *)
       printf '%s\n' "$_path"
+      ;;
+  esac
+}
+
+is_absolute_path() {
+  case "$1" in
+    /*)
+      return 0
+      ;;
+    *)
+      return 1
       ;;
   esac
 }
@@ -399,6 +414,74 @@ normalize_jira_auth_type() {
       return 1
       ;;
   esac
+}
+
+normalize_skill_plugin() {
+  case "$(printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]')" in
+    1|codex)
+      printf '%s\n' "codex"
+      ;;
+    2|github|github-copilot|github_copilot|copilot)
+      printf '%s\n' "github-copilot"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+skill_install_dir_for_plugin() {
+  _project_root="$1"
+  _plugin="$2"
+
+  case "$_plugin" in
+    codex)
+      printf '%s\n' "$_project_root/.codex/skills"
+      ;;
+    github-copilot)
+      printf '%s\n' "$_project_root/.github/skills"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+prompt_existing_absolute_dir() {
+  _prompt="$1"
+  _env_name="${2:-}"
+  _default="${3:-}"
+
+  while :; do
+    _answer="$(prompt_required "$_prompt" "$_default" "$_env_name")"
+    _answer="$(expand_user_path "$_answer")"
+
+    if ! is_absolute_path "$_answer"; then
+      warn "请输入绝对路径，例如 /path/to/project-root。"
+      continue
+    fi
+
+    if [ ! -d "$_answer" ]; then
+      warn "目录不存在：$_answer"
+      continue
+    fi
+
+    printf '%s\n' "$_answer"
+    return 0
+  done
+}
+
+prompt_skill_plugin() {
+  while :; do
+    _answer="$(prompt_required "请选择要安装 skill 的插件（1=codex，2=github-copilot）" "" "SKILL_PLUGIN")"
+
+    if _plugin="$(normalize_skill_plugin "$_answer" 2>/dev/null)"; then
+      printf '%s\n' "$_plugin"
+      return 0
+    fi
+
+    warn "插件只能选择 codex 或 github-copilot，也可以输入 1 或 2。"
+  done
 }
 
 jira_host_from_url() {
@@ -898,9 +981,35 @@ update_jira_cli() {
 resolve_install_config() {
   if [ -n "$SKILL_INSTALL_DIR" ]; then
     _skill_install_path="$SKILL_INSTALL_DIR"
-  else
-    _skill_install_path="$(prompt_required "请输入 skill 安装路径" "$DEFAULT_SKILL_INSTALL_DIR" "SKILL_INSTALL_DIR")"
+    return 0
   fi
+
+  say "开始安装 zeppos-jira skill。"
+  say "可选 agent 插件 skills 目录："
+  say "1. Codex：<ZeppOS 项目根目录>/.codex/skills/"
+  say "2. GitHub Copilot：<ZeppOS 项目根目录>/.github/skills/"
+
+  if [ -n "$SKILL_PROJECT_ROOT" ]; then
+    _skill_project_root="$(expand_user_path "$SKILL_PROJECT_ROOT")"
+    is_absolute_path "$_skill_project_root" || die "SKILL_PROJECT_ROOT 必须是绝对路径。"
+    [ -d "$_skill_project_root" ] || die "SKILL_PROJECT_ROOT 指向的目录不存在：$_skill_project_root"
+  else
+    _skill_project_root="$(prompt_existing_absolute_dir "请输入 ZeppOS 项目根目录绝对路径" "SKILL_PROJECT_ROOT")"
+  fi
+
+  if [ -n "$SKILL_PLUGIN" ]; then
+    _skill_plugin="$(normalize_skill_plugin "$SKILL_PLUGIN")" \
+      || die "SKILL_PLUGIN 只能是 codex 或 github-copilot。"
+  else
+    _skill_plugin="$(prompt_skill_plugin)"
+  fi
+
+  _default_skill_install_dir="$(skill_install_dir_for_plugin "$_skill_project_root" "$_skill_plugin")" \
+    || die "无法根据插件推导 skills 目录。"
+
+  _skill_install_path="$(prompt_required "请输入 skills 安装目录" "$_default_skill_install_dir" "SKILL_INSTALL_DIR")"
+  _skill_install_path="$(expand_user_path "$_skill_install_path")"
+  is_absolute_path "$_skill_install_path" || die "skills 安装目录必须是绝对路径。"
 }
 
 install_flow() {
@@ -910,13 +1019,13 @@ install_flow() {
 
   if ! is_disabled "$SKIP_CONFIG_STEPS"; then
     say ""
-    say "源码、jira-cli 安装和 jira-cli 初始化完成，已按临时开关 SKIP_CONFIG_STEPS=1 跳过 skill/launcher 配置。"
+    say "源码、jira-cli 安装和 jira-cli 初始化完成，已按 SKIP_CONFIG_STEPS 跳过 skill/launcher 配置。"
     say "源码目录：$PROJECT_DIR"
     return 0
   fi
 
   say ""
-  say "开始初始化配置。"
+  say "开始初始化 skill 和本地命令。"
 
   resolve_install_config
   create_skill_symlink "$_skill_install_path"
@@ -935,7 +1044,7 @@ update_flow() {
 
   if ! is_disabled "$SKIP_CONFIG_STEPS"; then
     say ""
-    say "源码和 jira-cli 更新检查完成，已按临时开关 SKIP_CONFIG_STEPS=1 跳过 skill/netrc/jira init。"
+    say "源码和 jira-cli 更新检查完成，已按 SKIP_CONFIG_STEPS 跳过额外配置。"
     say "源码目录：$PROJECT_DIR"
     return 0
   fi
@@ -1065,6 +1174,9 @@ normalize_paths() {
   DEFAULT_SKILL_INSTALL_DIR="$(expand_user_path "$DEFAULT_SKILL_INSTALL_DIR")"
   if [ -n "$SKILL_INSTALL_DIR" ]; then
     SKILL_INSTALL_DIR="$(expand_user_path "$SKILL_INSTALL_DIR")"
+  fi
+  if [ -n "$SKILL_PROJECT_ROOT" ]; then
+    SKILL_PROJECT_ROOT="$(expand_user_path "$SKILL_PROJECT_ROOT")"
   fi
 }
 

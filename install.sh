@@ -67,12 +67,23 @@ INSTALL_JIRA_CLI="${INSTALL_JIRA_CLI:-1}"
 # Optional switch to skip skill/launcher setup after jira-cli initialization.
 SKIP_CONFIG_STEPS="${SKIP_CONFIG_STEPS:-${SKIP_POST_SOURCE_STEPS:-0}}"
 
+SUMMARY_SOURCE_DIR=""
+SUMMARY_SOURCE_STATUS=""
+SUMMARY_JIRA_CLI=""
+SUMMARY_JIRA_INIT=""
+SUMMARY_JIRA_CONFIG=""
+SUMMARY_NETRC=""
+SUMMARY_SKILL_TARGET=""
+SUMMARY_SKILL_SOURCE=""
+SUMMARY_LAUNCHER=""
+SUMMARY_PATH_HINT=""
+
 say() {
   printf '%s\n' "$*"
 }
 
 warn() {
-  printf 'WARN: %s\n' "$*" >&2
+  printf '! %s\n' "$*"
 }
 
 die() {
@@ -86,6 +97,40 @@ has_cmd() {
 
 need_cmd() {
   has_cmd "$1" || die "缺少必要命令：$1"
+}
+
+blank() {
+  say ""
+}
+
+section() {
+  blank
+  say "== $1 =="
+}
+
+step_start() {
+  _step_no="$1"
+  _step_total="$2"
+  _step_title="$3"
+
+  blank
+  say "[$_step_no/$_step_total] $_step_title"
+}
+
+step_done() {
+  say "    完成"
+}
+
+detail() {
+  say "    $*"
+}
+
+summary_item() {
+  _label="$1"
+  _value="$2"
+
+  [ -n "$_value" ] || _value="-"
+  say "  - ${_label}: ${_value}"
 }
 
 is_disabled() {
@@ -168,9 +213,9 @@ prompt_required() {
 
   while :; do
     if [ -n "$_default" ]; then
-      printf '%s [%s]: ' "$_prompt" "$_default" >&2
+      printf '? %s [%s]: ' "$_prompt" "$_default" >&2
     else
-      printf '%s: ' "$_prompt" >&2
+      printf '? %s: ' "$_prompt" >&2
     fi
 
     IFS= read -r _answer || true
@@ -197,7 +242,7 @@ prompt_secret() {
   fi
 
   while :; do
-    printf '%s: ' "$_prompt" >&2
+    printf '? %s: ' "$_prompt" >&2
 
     _old_stty="$(stty -g 2>/dev/null || true)"
     stty -echo 2>/dev/null || true
@@ -474,7 +519,7 @@ prompt_existing_absolute_dir() {
 
 prompt_skill_plugin() {
   while :; do
-    _answer="$(prompt_required "请选择要安装 skill 的插件（1=codex，2=github-copilot）" "" "SKILL_PLUGIN")"
+    _answer="$(prompt_required "目标 Agent 插件 (1=Codex, 2=GitHub Copilot)" "" "SKILL_PLUGIN")"
 
     if _plugin="$(normalize_skill_plugin "$_answer" 2>/dev/null)"; then
       printf '%s\n' "$_plugin"
@@ -492,11 +537,78 @@ jira_host_from_url() {
           -e 's#:.*$##'
 }
 
+print_install_plan() {
+  _jira_cli_plan="检查本地 jira；缺失时尝试安装"
+  _jira_init_plan="执行 jira init，生成本地 JiraCLI 配置"
+  _skill_plan="安装 $SKILL_REL_PATH 到目标 Agent skills 目录"
+  _launcher_plan="$BIN_DIR/$APP_NAME"
+
+  if is_disabled "$INSTALL_JIRA_CLI"; then
+    _jira_cli_plan="跳过（INSTALL_JIRA_CLI=0）"
+  fi
+
+  if is_disabled "$INIT_JIRA_CLI" || is_disabled "$RUN_JIRA_INIT"; then
+    _jira_init_plan="跳过（INIT_JIRA_CLI=0 或 RUN_JIRA_INIT=0）"
+  fi
+
+  if ! is_disabled "$SKIP_CONFIG_STEPS"; then
+    _skill_plan="跳过（SKIP_CONFIG_STEPS=1）"
+    _launcher_plan="跳过（SKIP_CONFIG_STEPS=1）"
+  fi
+
+  section "zeppos-jira-workflow 安装"
+  say "将为当前机器配置 ZeppOS Jira Agent 工作流："
+  summary_item "源码目录" "$PROJECT_DIR"
+  summary_item "JiraCLI" "$_jira_cli_plan"
+  summary_item "Jira 配置" "$_jira_init_plan"
+  summary_item "Skill" "$_skill_plan"
+  summary_item "本地命令" "$_launcher_plan"
+
+  blank
+  say "安装流程："
+  say "  1. 准备工程源码"
+  say "  2. 检查或安装 jira-cli"
+  say "  3. 初始化 JiraCLI"
+  if is_disabled "$SKIP_CONFIG_STEPS"; then
+    say "  4. 安装 Agent Skill"
+    say "  5. 安装本地管理命令"
+  fi
+}
+
+print_skills_plan() {
+  section "zeppos-jira Skill 安装"
+  say "本流程只准备源码、安装 Skill，并刷新本地管理命令；不会重新执行 jira init。"
+  summary_item "源码目录" "$PROJECT_DIR"
+  summary_item "Skill" "$SKILL_REL_PATH"
+  summary_item "本地命令" "$BIN_DIR/$APP_NAME"
+}
+
+print_install_summary() {
+  _title="$1"
+
+  section "$_title"
+  summary_item "源码目录" "${SUMMARY_SOURCE_DIR:-$PROJECT_DIR}"
+  summary_item "源码状态" "$SUMMARY_SOURCE_STATUS"
+  summary_item "jira-cli" "$SUMMARY_JIRA_CLI"
+  summary_item "Jira 初始化" "$SUMMARY_JIRA_INIT"
+  summary_item "Jira 配置文件" "$SUMMARY_JIRA_CONFIG"
+  summary_item "Jira 凭据文件" "$SUMMARY_NETRC"
+  summary_item "Skill 软链接" "$SUMMARY_SKILL_TARGET"
+  summary_item "Skill 源目录" "$SUMMARY_SKILL_SOURCE"
+  summary_item "本地命令" "$SUMMARY_LAUNCHER"
+
+  if [ -n "$SUMMARY_PATH_HINT" ]; then
+    blank
+    say "下一步："
+    say "  $SUMMARY_PATH_HINT"
+  fi
+}
+
 ensure_project_source() {
   need_cmd git
 
   if [ -d "$PROJECT_DIR/.git" ]; then
-    say "检测到已有源码目录：$PROJECT_DIR"
+    detail "源码目录已存在：$PROJECT_DIR"
     (
       cd "$PROJECT_DIR"
 
@@ -505,7 +617,7 @@ ensure_project_source() {
         warn "当前源码 origin 为 $_origin，本次配置的 REPO_URL 为 $REPO_URL。"
       fi
 
-      git fetch origin "$REPO_BRANCH"
+      git fetch --quiet origin "$REPO_BRANCH"
 
       if git show-ref --verify --quiet "refs/heads/$REPO_BRANCH"; then
         git checkout "$REPO_BRANCH" >/dev/null 2>&1
@@ -513,24 +625,31 @@ ensure_project_source() {
         git checkout -b "$REPO_BRANCH" "origin/$REPO_BRANCH" >/dev/null 2>&1
       fi
 
-      git pull --ff-only origin "$REPO_BRANCH"
+      git pull --ff-only --quiet origin "$REPO_BRANCH"
     )
+    SUMMARY_SOURCE_DIR="$PROJECT_DIR"
+    SUMMARY_SOURCE_STATUS="已存在并已同步 $REPO_BRANCH"
     return 0
   fi
 
   if [ -e "$PROJECT_DIR" ]; then
     if is_empty_dir "$PROJECT_DIR"; then
-      say "目标目录已存在且为空，将源码下载到：$PROJECT_DIR"
-      git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$PROJECT_DIR"
+      detail "目标目录为空，下载源码到：$PROJECT_DIR"
+      git clone --quiet --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$PROJECT_DIR"
+      SUMMARY_SOURCE_DIR="$PROJECT_DIR"
+      SUMMARY_SOURCE_STATUS="已克隆 $REPO_BRANCH"
       return 0
     fi
 
     die "源码安装目录已存在但不是 Git 仓库或空目录：$PROJECT_DIR"
   fi
 
-  say "正在下载工程源码：$REPO_URL"
+  detail "下载源码：$REPO_URL"
+  detail "目标目录：$PROJECT_DIR"
   mkdir -p "$(dirname "$PROJECT_DIR")"
-  git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$PROJECT_DIR"
+  git clone --quiet --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$PROJECT_DIR"
+  SUMMARY_SOURCE_DIR="$PROJECT_DIR"
+  SUMMARY_SOURCE_STATUS="已克隆 $REPO_BRANCH"
 }
 
 install_jira_cli_with_project_script() {
@@ -549,7 +668,7 @@ install_jira_cli_with_project_script() {
     return 1
   fi
 
-  say "正在通过工程内脚本安装 jira-cli：$_script"
+  detail "通过工程内脚本安装 jira-cli：$_script"
 
   if bash "$_script" install; then
     has_cmd jira
@@ -581,7 +700,7 @@ install_jira_cli_with_custom_script() {
     return 1
   fi
 
-  say "正在通过 raw 脚本安装 jira-cli：$JIRA_CLI_INSTALL_URL"
+  detail "通过 raw 脚本安装 jira-cli：$JIRA_CLI_INSTALL_URL"
 
   _tmp="${TMPDIR:-/tmp}/${APP_NAME}-jira-cli-install.$$"
   rm -f "$_tmp"
@@ -616,16 +735,19 @@ install_jira_cli_fallback() {
 
 ensure_jira_cli() {
   if is_disabled "$INSTALL_JIRA_CLI"; then
-    warn "已按 INSTALL_JIRA_CLI=0 跳过 jira-cli 安装。"
+    detail "已按 INSTALL_JIRA_CLI=0 跳过 jira-cli 安装。"
+    SUMMARY_JIRA_CLI="已跳过"
     return 0
   fi
 
   if has_cmd jira; then
-    say "已检测到 jira-cli：$(command -v jira)"
+    _jira_path="$(command -v jira)"
+    detail "已检测到 jira-cli：$_jira_path"
+    SUMMARY_JIRA_CLI="$_jira_path"
     return 0
   fi
 
-  say "未检测到 jira-cli，准备安装。"
+  detail "未检测到 jira-cli，准备安装。"
 
   if ! install_jira_cli_with_project_script; then
     if ! install_jira_cli_with_custom_script; then
@@ -635,7 +757,9 @@ ensure_jira_cli() {
 
   has_cmd jira || die "jira-cli 安装完成后仍找不到 jira 命令，请检查 PATH。"
 
-  say "jira-cli 安装完成：$(command -v jira)"
+  _jira_path="$(command -v jira)"
+  detail "jira-cli 安装完成：$_jira_path"
+  SUMMARY_JIRA_CLI="$_jira_path"
 }
 
 create_skill_symlink() {
@@ -652,11 +776,13 @@ create_skill_symlink() {
     _current_link="$(readlink "$_skill_target" 2>/dev/null || true)"
 
     if [ "$_current_link" = "$_skill_src" ]; then
-      say "skill 软链接已存在：$_skill_target -> $_skill_src"
+      detail "Skill 软链接已存在：$_skill_target"
+      SUMMARY_SKILL_TARGET="$_skill_target"
+      SUMMARY_SKILL_SOURCE="$_skill_src"
       return 0
     fi
 
-    say "发现已有软链接，将替换：$_skill_target"
+    detail "发现已有 Skill 软链接，将替换：$_skill_target"
     rm -f "$_skill_target"
   elif [ -e "$_skill_target" ]; then
     _backup="${_skill_target}.backup.$(date +%Y%m%d%H%M%S)"
@@ -665,7 +791,9 @@ create_skill_symlink() {
   fi
 
   ln -s "$_skill_src" "$_skill_target"
-  say "已创建 skill 软链接：$_skill_target -> $_skill_src"
+  detail "已创建 Skill 软链接：$_skill_target"
+  SUMMARY_SKILL_TARGET="$_skill_target"
+  SUMMARY_SKILL_SOURCE="$_skill_src"
 }
 
 write_netrc() {
@@ -700,7 +828,8 @@ write_netrc() {
   } >> "$_netrc"
 
   chmod 600 "$_netrc"
-  say "已写入 $_netrc，并设置权限为 600。"
+  detail "已更新 Jira 凭据文件：$_netrc (600)"
+  SUMMARY_NETRC="$_netrc (600)"
 }
 
 jira_config_file_path() {
@@ -746,10 +875,12 @@ sync_netrc_from_jira_config() {
 }
 
 resolve_jira_cli_init_config() {
+  detail "请填写 Jira 连接信息。可通过环境变量预填这些值。"
+
   if [ -n "$JIRA_SERVER" ]; then
     _jira_server="$(normalize_jira_server "$JIRA_SERVER")"
   else
-    _jira_server="$(prompt_required "请输入 Jira 服务器地址，例如 https://jira.example.com" "" "JIRA_SERVER")"
+    _jira_server="$(prompt_required "Jira 服务器地址，例如 https://jira.example.com" "" "JIRA_SERVER")"
     _jira_server="$(normalize_jira_server "$_jira_server")"
   fi
 
@@ -758,7 +889,7 @@ resolve_jira_cli_init_config() {
       || die "JIRA_INSTALLATION 只能是 cloud 或 local。"
   else
     _default_installation="$(infer_jira_installation "$_jira_server")"
-    _jira_installation="$(prompt_required "请输入 Jira 类型 cloud/local" "$_default_installation" "JIRA_INSTALLATION")"
+    _jira_installation="$(prompt_required "Jira 类型 (cloud=Atlassian Cloud, local=自建/内网 Jira)" "$_default_installation" "JIRA_INSTALLATION")"
     _jira_installation="$(normalize_jira_installation "$_jira_installation")" \
       || die "Jira 类型只能是 cloud 或 local。"
   fi
@@ -767,7 +898,7 @@ resolve_jira_cli_init_config() {
     _jira_auth_type="$(normalize_jira_auth_type "$JIRA_AUTH_TYPE")" \
       || die "JIRA_AUTH_TYPE 只能是 basic、bearer 或 mtls。"
   else
-    _jira_auth_type="$(prompt_required "请输入 Jira 认证类型 basic/bearer/mtls" "basic" "JIRA_AUTH_TYPE")"
+    _jira_auth_type="$(prompt_required "Jira 认证类型 (basic=密码/API Token, bearer=PAT, mtls=证书)" "basic" "JIRA_AUTH_TYPE")"
     _jira_auth_type="$(normalize_jira_auth_type "$_jira_auth_type")" \
       || die "Jira 认证类型只能是 basic、bearer 或 mtls。"
   fi
@@ -776,9 +907,9 @@ resolve_jira_cli_init_config() {
     _jira_account="$JIRA_ACCOUNT"
   else
     if [ "$_jira_installation" = "cloud" ]; then
-      _jira_account="$(prompt_required "请输入 Jira 登录邮箱" "" "JIRA_ACCOUNT")"
+      _jira_account="$(prompt_required "Jira 登录邮箱" "" "JIRA_ACCOUNT")"
     else
-      _jira_account="$(prompt_required "请输入 Jira 登录用户名" "" "JIRA_ACCOUNT")"
+      _jira_account="$(prompt_required "Jira 登录用户名" "" "JIRA_ACCOUNT")"
     fi
   fi
 
@@ -787,13 +918,14 @@ resolve_jira_cli_init_config() {
   elif [ -n "$JIRA_API_TOKEN" ]; then
     _jira_password="$JIRA_API_TOKEN"
   else
-    _jira_password="$(prompt_secret "请输入 Jira 密码或 API Token/PAT" "JIRA_API_TOKEN")"
+    _jira_password="$(prompt_secret "Jira 密码、API Token 或 PAT" "JIRA_API_TOKEN")"
   fi
 }
 
 run_jira_init() {
   if is_disabled "$INIT_JIRA_CLI" || is_disabled "$RUN_JIRA_INIT"; then
-    warn "已按 INIT_JIRA_CLI=0 或 RUN_JIRA_INIT=0 跳过 jira init。"
+    detail "已按 INIT_JIRA_CLI=0 或 RUN_JIRA_INIT=0 跳过 jira init。"
+    SUMMARY_JIRA_INIT="已跳过"
     return 0
   fi
 
@@ -838,8 +970,10 @@ run_jira_init() {
     die "当前不是交互式终端，请通过 JIRA_BOARD 提供默认 Jira board 名称。"
   fi
 
-  say "准备执行 jira init。项目和 board 若未通过环境变量提供，将由 jira-cli 交互选择。"
+  detail "准备执行 jira init。项目和 board 若未通过环境变量提供，将由 jira-cli 交互选择。"
   jira "$@"
+  SUMMARY_JIRA_INIT="已完成"
+  SUMMARY_JIRA_CONFIG="$(jira_config_file_path)"
 
   if [ "$_jira_auth_type" != "mtls" ]; then
     sync_netrc_from_jira_config "$_jira_password" "$_jira_server" "$_jira_account"
@@ -872,13 +1006,15 @@ install_launcher() {
 
   chmod +x "$_launcher"
 
-  say "已安装命令：$_launcher"
+  detail "已安装本地管理命令：$_launcher"
+  SUMMARY_LAUNCHER="$_launcher"
   case ":$PATH:" in
     *":$BIN_DIR:"*)
       ;;
     *)
       warn "$BIN_DIR 不在 PATH 中。你可以把下面这行加入 ~/.zshrc 或 ~/.bashrc："
       warn "export PATH=\"$BIN_DIR:\$PATH\""
+      SUMMARY_PATH_HINT="把 $BIN_DIR 加入 PATH：export PATH=\"$BIN_DIR:\$PATH\""
       ;;
   esac
 }
@@ -982,20 +1118,20 @@ update_jira_cli() {
 resolve_install_config() {
   if [ -n "$SKILL_INSTALL_DIR" ]; then
     _skill_install_path="$SKILL_INSTALL_DIR"
+    detail "使用 SKILL_INSTALL_DIR：$_skill_install_path"
     return 0
   fi
 
-  say "开始安装 zeppos-jira skill。"
-  say "可选 agent 插件 skills 目录："
-  say "1. Codex：<ZeppOS 项目根目录>/.codex/skills/"
-  say "2. GitHub Copilot：<ZeppOS 项目根目录>/.github/skills/"
+  detail "请选择 Skill 要安装到哪个 Agent 项目。"
+  detail "Codex: <ZeppOS 项目根目录>/.codex/skills/"
+  detail "GitHub Copilot: <ZeppOS 项目根目录>/.github/skills/"
 
   if [ -n "$SKILL_PROJECT_ROOT" ]; then
     _skill_project_root="$(expand_user_path "$SKILL_PROJECT_ROOT")"
     is_absolute_path "$_skill_project_root" || die "SKILL_PROJECT_ROOT 必须是绝对路径。"
     [ -d "$_skill_project_root" ] || die "SKILL_PROJECT_ROOT 指向的目录不存在：$_skill_project_root"
   else
-    _skill_project_root="$(prompt_existing_absolute_dir "请输入 ZeppOS 项目根目录绝对路径" "SKILL_PROJECT_ROOT")"
+    _skill_project_root="$(prompt_existing_absolute_dir "ZeppOS 项目根目录绝对路径" "SKILL_PROJECT_ROOT")"
   fi
 
   if [ -n "$SKILL_PLUGIN" ]; then
@@ -1008,33 +1144,47 @@ resolve_install_config() {
   _default_skill_install_dir="$(skill_install_dir_for_plugin "$_skill_project_root" "$_skill_plugin")" \
     || die "无法根据插件推导 skills 目录。"
 
-  _skill_install_path="$(prompt_required "请输入 skills 安装目录" "$_default_skill_install_dir" "SKILL_INSTALL_DIR")"
+  _skill_install_path="$(prompt_required "skills 安装目录" "$_default_skill_install_dir" "SKILL_INSTALL_DIR")"
   _skill_install_path="$(expand_user_path "$_skill_install_path")"
   is_absolute_path "$_skill_install_path" || die "skills 安装目录必须是绝对路径。"
 }
 
 install_flow() {
+  print_install_plan
+  _install_total_steps=5
+  if ! is_disabled "$SKIP_CONFIG_STEPS"; then
+    _install_total_steps=3
+  fi
+
+  step_start 1 "$_install_total_steps" "准备工程源码"
   ensure_project_source
+  step_done
+
+  step_start 2 "$_install_total_steps" "检查或安装 jira-cli"
   ensure_jira_cli
+  step_done
+
+  step_start 3 "$_install_total_steps" "初始化 JiraCLI"
   run_jira_init
+  step_done
 
   if ! is_disabled "$SKIP_CONFIG_STEPS"; then
-    say ""
-    say "源码、jira-cli 安装和 jira-cli 初始化完成，已按 SKIP_CONFIG_STEPS 跳过 skill/launcher 配置。"
-    say "源码目录：$PROJECT_DIR"
+    SUMMARY_SKILL_TARGET="已按 SKIP_CONFIG_STEPS 跳过"
+    SUMMARY_LAUNCHER="已按 SKIP_CONFIG_STEPS 跳过"
+    print_install_summary "安装完成（已跳过 Skill 和本地命令）"
     return 0
   fi
 
-  say ""
-  say "开始初始化 skill 和本地命令。"
+  step_start 4 5 "安装 Agent Skill"
+  resolve_install_config
+  create_skill_symlink "$_skill_install_path"
+  step_done
 
-  run_skill_install_steps
+  step_start 5 5 "安装本地管理命令"
+  install_launcher
+  step_done
 
-  say ""
-  say "安装完成。"
-  say "源码目录：$PROJECT_DIR"
-  say "skill 目录：$(expand_user_path "$_skill_install_path")/$(basename "$SKILL_REL_PATH")"
-  say "更新命令：$APP_NAME update"
+  print_install_summary "安装完成"
 }
 
 run_skill_install_steps() {
@@ -1044,14 +1194,24 @@ run_skill_install_steps() {
 }
 
 install_skills_flow() {
-  ensure_project_source
-  run_skill_install_steps
+  print_skills_plan
 
-  say ""
-  say "skill 安装完成。"
-  say "源码目录：$PROJECT_DIR"
-  say "skill 目录：$(expand_user_path "$_skill_install_path")/$(basename "$SKILL_REL_PATH")"
-  say "本地命令：$APP_NAME"
+  step_start 1 3 "准备工程源码"
+  ensure_project_source
+  step_done
+
+  step_start 2 3 "安装 Agent Skill"
+  resolve_install_config
+  create_skill_symlink "$_skill_install_path"
+  step_done
+
+  step_start 3 3 "安装本地管理命令"
+  install_launcher
+  step_done
+
+  SUMMARY_JIRA_CLI="未检查（skills 命令不处理 jira-cli）"
+  SUMMARY_JIRA_INIT="未执行（skills 命令不执行 jira init）"
+  print_install_summary "Skill 安装完成"
 }
 
 update_flow() {

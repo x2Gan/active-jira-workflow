@@ -1,15 +1,34 @@
 # active-jira-workflow
 
-`active-jira-workflow` 是 Active 团队使用 Jira 的 Agent 工作流仓库。它把本地开源工具 [`ankitpokhrel/jira-cli`](https://github.com/ankitpokhrel/jira-cli) 封装成一组可安装的 Skills，让 Codex 或 GitHub Copilot 这类 Agent 在需要查询 Jira、整理报告或按项目规则建单时，能按固定方式构造 JQL、调用本地 `jira` 命令，并把结果整理成稳定输出。
+`active-jira-workflow` 是面向 Active 团队的 Jira 与飞书 Agent 工作流仓库。它把本地 [`ankitpokhrel/jira-cli`](https://github.com/ankitpokhrel/jira-cli) 和官方 `lark-cli` 封装成可安装的 Skills，让 Codex、GitHub Copilot 等 Agent 能按团队规则查询 Jira、生成 Markdown 报告、创建规范 Jira，并把报告发布为飞书云文档后推送到指定群聊。
 
-当前内置的 Active 场景包括：
+## GitHub Description
 
-- 查询 Jira issue、epic、sprint、release、project、board 等通用 Jira 信息。
-- 查看、创建、编辑、流转、评论、指派、链接、克隆、关注 Jira issue。
-- 查询 `GENEVA` 项目中超过指定时间仍未关闭的 Jira，并输出标准 Markdown 表格。
-- 按项目规则整理 Jira 周报、风险报告、发布报告、负责人汇总。
-- 按项目约定创建新的缺陷 Jira，并补齐特殊字段或自定义字段。
-- 通过官方 Lark CLI 将 Markdown 报告发布为飞书云文档，并继续操作飞书消息、日历、表格、任务等资源。
+面向 Codex/Copilot 的 Active Jira Agent 工作流：安装 jira-cli/Lark CLI Skills，查询与管理 Jira，生成规则化 Markdown 报告，并发布到飞书文档和机器人群聊。
+
+## 能力概览
+
+| 能力 | 说明 |
+| --- | --- |
+| Jira 查询与管理 | 查询 issue、epic、sprint、release、project、board；查看、创建、编辑、流转、评论、指派、链接、克隆、关注 Jira issue。 |
+| 场景化 Jira 报告 | 生成周报、风险报告、发布报告、负责人汇总；内置 `GENEVA` 长期未处理 Jira 报告，自动分页、排序、Highlight 和汇总。 |
+| 项目规则化建单 | 按 Active 项目规则补齐缺陷 Jira 的 Severity、Products、自定义字段、标签、组件等信息。 |
+| 飞书文档发布 | 通过官方 Lark CLI 将本地 Markdown 报告创建或更新为飞书云文档。 |
+| 飞书机器人推送 | 为目标群聊授权文档查看权限，并通过机器人发送报告链接，支持 `--dry-run` 预览外部副作用。 |
+| 安装与更新 | 一键安装源码、jira-cli、Skills、本地管理命令；Lark CLI 作为可选增强能力接入。 |
+
+## 常用入口速查
+
+| 场景 | 命令 |
+| --- | --- |
+| 一键安装 | `sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"` |
+| 更新源码和 jira-cli | `active-jira update` |
+| 重新安装 Skills | `active-jira skills` |
+| 查看版本 | `active-jira version` |
+| 生成长期未处理 Jira 报告 | `python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w` |
+| 生成报告并发布到飞书 | `python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --dry-run` |
+| 发布并推送到群聊 | `python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --chat-id oc_xxx --grant-chat-view --dry-run` |
+| Lark CLI 环境检查 | `sh lark-cli.sh doctor` |
 
 ## 仓库摘要
 
@@ -27,10 +46,12 @@ active-jira/references/            jira-cli 用法参考
 active-jira/scripts/               场景化查询脚本
 active-jira/agents/openai.yaml     Skill 展示信息
 active-jira-report/references/     报告模板与建单规则参考
+active-jira-report/scripts/        Jira 报告生成与飞书发布编排脚本
 active-jira-report/agents/openai.yaml Skill 展示信息
 active-lark/references/            lark-cli 用法与快捷命令参考
 active-lark/scripts/               飞书文档发布辅助脚本
 active-lark/agents/openai.yaml     Skill 展示信息
+reports/                           本地生成报告目录，默认不提交 Git
 ```
 
 安装后会得到三部分能力：
@@ -38,6 +59,13 @@ active-lark/agents/openai.yaml     Skill 展示信息
 - 源码目录：默认安装到当前目录下的 `active-jira-workflow/`。
 - Skill 软链接：默认同时安装 `active-jira`、`active-jira-report` 和 `active-lark` 到 Codex 或 GitHub Copilot 项目的 skills 目录。
 - 本地管理命令：默认安装为 `~/.local/bin/active-jira`，用于后续更新和查看版本。
+
+## 设计原则
+
+- 本地优先：Jira 与飞书操作都通过本机 CLI 执行，不在仓库中保存 Jira Token、飞书 App Secret、access token 或 refresh token。
+- Skills 可演进：通用 Jira 能力、场景化报告能力、飞书能力拆成独立 Skill，方便按需安装和持续迭代。
+- 可审计输出：报告固定包含查询时间、命令、JQL、分页策略和字段来源，方便复盘。
+- 外部副作用先预览：飞书文档创建、权限授权、消息发送等写操作优先使用 `--dry-run`。
 
 ## 分发方式
 
@@ -425,6 +453,18 @@ active-jira version
 ```
 
 如果源码目录有本地修改，更新命令不会自动覆盖。请先提交或处理本地修改后再执行更新。
+
+## 新功能迭代约定
+
+本仓库会持续增加新的 Jira、报告和飞书自动化能力。新增功能时，建议同步维护这些位置，避免 README 和 Skill 行为脱节：
+
+- `README.md`：在“能力概览”和“常用入口速查”中补充用户最常用命令。
+- `active-*/SKILL.md`：补充 Agent 触发条件、执行流程、安全边界和 dry-run 策略。
+- `active-*/references/`：沉淀字段规则、报告口径、CLI 使用细节等长期参考资料。
+- `active-*/scripts/`：新增脚本时保持参数可发现，至少支持 `--help`；涉及外部写操作时优先支持 `--dry-run`。
+- `doc/`：记录设计方案、任务拆分、验收清单和外部依赖变化。
+
+涉及 Jira 创建/编辑、飞书文档写入、权限授权、消息发送等外部副作用时，文档中必须写清楚目标对象、身份、权限要求和回滚或重试注意事项。
 
 ## 作者与版权
 

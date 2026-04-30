@@ -157,7 +157,7 @@ skill_rel_paths_value() {
     return 0
   fi
 
-  printf '%s\n' "active-jira active-jira-report"
+  printf '%s\n' "active-jira active-jira-report active-lark"
 }
 
 skill_rel_paths_display() {
@@ -212,7 +212,7 @@ Environment:
   INSTALL_DIR             源码安装父目录，默认：当前目录
   PROJECT_DIR             精确源码目录，兼容旧变量；优先级高于 INSTALL_DIR
   SKILL_REL_PATH          工程内单个 skill 目录；显式设置后只安装该 skill
-  SKILL_REL_PATHS         工程内多个 skill 目录，使用空格分隔；默认安装：active-jira active-jira-report
+  SKILL_REL_PATHS         工程内多个 skill 目录，使用空格分隔；默认安装：active-jira active-jira-report active-lark
   SKILL_INSTALL_DIR       skill 安装目录；若为空则进入交互式插件安装流程
   SKILL_PROJECT_ROOT      Active 项目根目录绝对路径；用于推导插件 skills 目录
   SKILL_PLUGIN            安装目标插件：codex 或 github-copilot

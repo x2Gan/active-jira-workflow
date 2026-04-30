@@ -9,6 +9,7 @@
 - 查询 `GENEVA` 项目中超过指定时间仍未关闭的 Jira，并输出标准 Markdown 表格。
 - 按项目规则整理 Jira 周报、风险报告、发布报告、负责人汇总。
 - 按项目约定创建新的缺陷 Jira，并补齐特殊字段或自定义字段。
+- 通过官方 Lark CLI 将 Markdown 报告发布为飞书云文档，并继续操作飞书消息、日历、表格、任务等资源。
 
 ## 仓库摘要
 
@@ -21,17 +22,21 @@ lark-cli.sh                        可选安装/配置/登录官方 Lark CLI 的
 VERSION                            仓库版本
 active-jira/SKILL.md               Agent Skill 主说明
 active-jira-report/SKILL.md        场景化报告与规则化建单 Skill
+active-lark/SKILL.md               飞书/Lark CLI 通用能力 Skill
 active-jira/references/            jira-cli 用法参考
 active-jira/scripts/               场景化查询脚本
 active-jira/agents/openai.yaml     Skill 展示信息
 active-jira-report/references/     报告模板与建单规则参考
 active-jira-report/agents/openai.yaml Skill 展示信息
+active-lark/references/            lark-cli 用法与快捷命令参考
+active-lark/scripts/               飞书文档发布辅助脚本
+active-lark/agents/openai.yaml     Skill 展示信息
 ```
 
 安装后会得到三部分能力：
 
 - 源码目录：默认安装到当前目录下的 `active-jira-workflow/`。
-- Skill 软链接：默认同时安装 `active-jira` 和 `active-jira-report` 到 Codex 或 GitHub Copilot 项目的 skills 目录。
+- Skill 软链接：默认同时安装 `active-jira`、`active-jira-report` 和 `active-lark` 到 Codex 或 GitHub Copilot 项目的 skills 目录。
 - 本地管理命令：默认安装为 `~/.local/bin/active-jira`，用于后续更新和查看版本。
 
 ## 分发方式
@@ -78,7 +83,7 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-w
 2. 检查本地是否存在 `jira` 命令。
 3. 如果缺少 `jira`，在 Linux 环境下通过 `jira-cli.sh` 安装 `ankitpokhrel/jira-cli`。
 4. 执行 `jira init`，生成 JiraCLI 配置。
-5. 将 `active-jira` 和 `active-jira-report` 两个 Skill 软链接到目标 Agent 的 skills 目录。
+5. 将 `active-jira`、`active-jira-report` 和 `active-lark` 三个 Skill 软链接到目标 Agent 的 skills 目录。
 6. 安装本地管理命令 `active-jira`。
 
 安装流程末尾会把 Lark CLI 作为可选增强能力提示出来，默认不会安装。它用于后续把生成的 Jira Markdown 报告发布为飞书云文档，并在确认后发送给指定用户或群。
@@ -192,6 +197,8 @@ sh lark-cli.sh bootstrap
 sh lark-cli.sh install
 ```
 
+该命令会安装官方 npm 包 `@larksuite/cli`，并按官方当前推荐方式执行 `npx -y skills add larksuite/cli -g -y` 安装上游 Lark CLI Skills。仓库内的 `active-lark` Skill 是本项目自己的聚合封装，会随主安装器一起安装。
+
 在主安装器中显式启用：
 
 ```bash
@@ -242,16 +249,44 @@ PROJECT_DIR="$(pwd)" SKILL_INSTALL_DIR="/path/to/project/.codex/skills" sh insta
 ```text
 /path/to/project/.codex/skills/active-jira -> /path/to/active-jira-workflow/active-jira
 /path/to/project/.codex/skills/active-jira-report -> /path/to/active-jira-workflow/active-jira-report
+/path/to/project/.codex/skills/active-lark -> /path/to/active-jira-workflow/active-lark
 ```
 
 这样仓库更新后，Skill 内容会跟随源码目录同步更新。
 
 ## SKILL 介绍与用法
 
-这个仓库现在拆成两个并列 Skill：
+这个仓库现在拆成三个并列 Skill：
 
 - `active-jira`：通用 Jira 能力底座，负责查询、查看、编辑、流转等原子能力。
 - `active-jira-report`：场景化工作流，负责报告整理、项目规则汇总、按约定创建缺陷 Jira。
+- `active-lark`：飞书/Lark 通用能力底座，负责通过官方 `lark-cli` 操作文档、消息、日历、表格、任务、多维表格、云空间、Wiki 等资源。
+
+### `active-lark`
+
+基础能力来自本地官方 `lark-cli` 命令，Agent 会优先使用带 `+` 的快捷命令，并在必要时退到 generated API 或 raw OpenAPI：
+
+```bash
+lark-cli auth status --verify
+lark-cli docs +create --api-version v2 --doc-format markdown --content @report.md
+lark-cli docs +fetch --api-version v2 --doc '<DOC_URL_OR_TOKEN>' --doc-format markdown --format json
+lark-cli docs +update --api-version v2 --doc '<DOC_URL_OR_TOKEN>' --command append --doc-format markdown --content @appendix.md
+lark-cli im +chat-search --query 'project group' --format table
+lark-cli im +messages-send --chat-id 'oc_xxx' --text 'hello' --dry-run
+lark-cli calendar +agenda --format table
+lark-cli sheets +read --url '<SHEET_URL>' --range 'A1:E20'
+lark-cli base +record-list --base-token '<BASE_TOKEN>' --table-id '<TABLE_ID_OR_NAME>' --format json
+lark-cli task +search --query 'release' --format json
+```
+
+发布本地 Markdown 报告到飞书文档时，也可以使用仓库脚本：
+
+```bash
+python active-lark/scripts/publish_markdown_doc.py doc/active-jira-report-长期未处理Jira报告查询.md --dry-run
+python active-lark/scripts/publish_markdown_doc.py doc/active-jira-report-长期未处理Jira报告查询.md
+```
+
+发送消息、创建日程、覆盖文档、删除文件、审批等写操作都属于外部副作用；`active-lark` 会要求目标、内容和身份明确，并优先使用 `--dry-run` 预览。
 
 ### `active-jira`
 
@@ -350,7 +385,8 @@ project = GENEVA AND created <= "YYYY-MM-DD" AND status in (Open, "In Progress",
 ```bash
 PROJECT_DIR="$(pwd)" SKILL_REL_PATH="active-jira" sh install.sh skills
 PROJECT_DIR="$(pwd)" SKILL_REL_PATH="active-jira-report" sh install.sh skills
-PROJECT_DIR="$(pwd)" SKILL_REL_PATHS="active-jira active-jira-report" sh install.sh skills
+PROJECT_DIR="$(pwd)" SKILL_REL_PATH="active-lark" sh install.sh skills
+PROJECT_DIR="$(pwd)" SKILL_REL_PATHS="active-jira active-jira-report active-lark" sh install.sh skills
 ```
 
 ## 维护与更新

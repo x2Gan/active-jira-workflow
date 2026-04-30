@@ -29,7 +29,7 @@
 
 ```sh
 npm install -g @larksuite/cli
-npx -y skills add https://open.feishu.cn --skill -y
+npx -y skills add larksuite/cli -g -y
 lark-cli config init --new
 lark-cli auth login --recommend
 lark-cli auth status
@@ -150,7 +150,7 @@ sh lark-cli.sh doctor
 - [x] 用户拒绝 `sudo` 后询问是否安装到 fallback 路径。
 - [x] 用户拒绝 fallback 后结束安装流程。
 - [x] 执行 `npm install -g @larksuite/cli`。
-- [x] 执行 `npx -y skills add https://open.feishu.cn --skill -y`。
+- [x] 执行 `npx -y skills add larksuite/cli -g -y`。
 - [x] 检查 `lark-cli` 是否可用。
 - [x] 如果不可用，输出 npm global bin 的 PATH 修复提示。
 - [x] 安装完成后提示后续命令：
@@ -164,7 +164,7 @@ sh lark-cli.sh status
 环境变量建议：
 
 - [x] `LARK_CLI_NPM_PACKAGE="${LARK_CLI_NPM_PACKAGE:-@larksuite/cli}"`
-- [x] `LARK_CLI_SKILL_SOURCE="${LARK_CLI_SKILL_SOURCE:-https://open.feishu.cn}"`
+- [x] `LARK_CLI_SKILL_SOURCE="${LARK_CLI_SKILL_SOURCE:-larksuite/cli}"`
 - [x] `LARK_CLI_SKIP_SKILL="${LARK_CLI_SKIP_SKILL:-0}"`
 - [x] `LARK_CLI_NPM_FALLBACK_PREFIX="${LARK_CLI_NPM_FALLBACK_PREFIX:-$HOME/.local/npm}"`
 
@@ -216,7 +216,7 @@ npm view @larksuite/cli version
 
 ```sh
 npm install -g @larksuite/cli@latest
-npx -y skills add https://open.feishu.cn --skill -y
+npx -y skills add larksuite/cli -g -y
 ```
 
 - [x] 更新后打印版本和状态。
@@ -467,7 +467,7 @@ sh lark-cli.sh update
 lark-cli docs +create \
   --api-version v2 \
   --doc-format markdown \
-  --content "$(cat doc/active-jira-report-长期未处理Jira报告查询.md)"
+  --content @doc/active-jira-report-长期未处理Jira报告查询.md
 ```
 
 任务：

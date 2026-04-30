@@ -19,7 +19,7 @@
 npm install -g @larksuite/cli
 
 # 安装 CLI Skill
-npx -y skills add https://open.feishu.cn --skill -y
+npx -y skills add larksuite/cli -g -y
 
 # 配置应用凭证
 lark-cli config init --new
@@ -135,7 +135,7 @@ auth: not checked
 
 1. 检查 `node`、`npm`、`npx`。
 2. 执行 `npm install -g @larksuite/cli`。
-3. 执行 `npx -y skills add https://open.feishu.cn --skill -y`。
+3. 执行 `npx -y skills add larksuite/cli -g -y`。
 4. 检查 `lark-cli` 是否可用。
 5. 提示用户是否需要继续执行 `config` 和 `login`，或建议使用 `bootstrap`。
 
@@ -201,7 +201,7 @@ lark-cli auth status
 
 ```sh
 npm install -g @larksuite/cli@latest
-npx -y skills add https://open.feishu.cn --skill -y
+npx -y skills add larksuite/cli -g -y
 lark-cli auth status
 ```
 
@@ -293,7 +293,7 @@ python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA
 lark-cli docs +create \
   --api-version v2 \
   --doc-format markdown \
-  --content "$(cat doc/active-jira-report-长期未处理Jira报告查询.md)"
+  --content @doc/active-jira-report-长期未处理Jira报告查询.md
 ```
 
 建议后续新增一个独立发布脚本或 Skill 工作流，而不是直接塞进安装脚本：
@@ -349,7 +349,7 @@ active-jira-report
 | 缺少 npm/npx | 提示修复 Node.js/npm 环境 |
 | npm 全局安装权限不足 | 安装前检测 npm global root 是否可写；不可写时交互触发 `sudo`，用户拒绝后询问是否安装到用户级 fallback prefix |
 | npm 安装成功但找不到 `lark-cli` | 检查 npm 全局 bin 目录是否在 `PATH` 中，并输出 PATH 修复提示 |
-| Skill 安装失败 | 保留 CLI 安装结果，提示用户重试 `npx -y skills add https://open.feishu.cn --skill -y` |
+| Skill 安装失败 | 保留 CLI 安装结果，提示用户重试 `npx -y skills add larksuite/cli -g -y` |
 | `config init` 中断 | 提示可稍后执行 `./lark-cli.sh config` |
 | OAuth 登录超时 | 提示重新执行 `./lark-cli.sh login` |
 | 权限不足 | 提示根据 `lark-cli` 报错补充授权，或执行 `lark-cli auth login --recommend` |

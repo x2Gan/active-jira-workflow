@@ -9,7 +9,7 @@ set -eu
 ###############################################################################
 
 LARK_CLI_NPM_PACKAGE="${LARK_CLI_NPM_PACKAGE:-@larksuite/cli}"
-LARK_CLI_SKILL_SOURCE="${LARK_CLI_SKILL_SOURCE:-https://open.feishu.cn}"
+LARK_CLI_SKILL_SOURCE="${LARK_CLI_SKILL_SOURCE:-larksuite/cli}"
 LARK_CLI_SKIP_SKILL="${LARK_CLI_SKIP_SKILL:-0}"
 LARK_CLI_NPM_FALLBACK_PREFIX="${LARK_CLI_NPM_FALLBACK_PREFIX:-$HOME/.local/npm}"
 
@@ -85,7 +85,7 @@ Environment:
 
 Official flow:
   npm install -g @larksuite/cli
-  npx -y skills add https://open.feishu.cn --skill -y
+  npx -y skills add larksuite/cli -g -y
   lark-cli config init --new
   lark-cli auth login --recommend
   lark-cli auth status
@@ -316,11 +316,11 @@ require_lark_cli() {
 install_skill() {
   if is_disabled "$LARK_CLI_SKIP_SKILL"; then
     section "安装 Lark CLI Skill"
-    if npx -y skills add "$LARK_CLI_SKILL_SOURCE" --skill -y; then
+    if npx -y skills add "$LARK_CLI_SKILL_SOURCE" -g -y; then
       return 0
     fi
 
-    warn "CLI Skill 安装失败，可稍后重试：npx -y skills add ${LARK_CLI_SKILL_SOURCE} --skill -y"
+    warn "CLI Skill 安装失败，可稍后重试：npx -y skills add ${LARK_CLI_SKILL_SOURCE} -g -y"
     return 1
   else
     warn "已按 LARK_CLI_SKIP_SKILL=${LARK_CLI_SKIP_SKILL} 跳过 CLI Skill 安装。"

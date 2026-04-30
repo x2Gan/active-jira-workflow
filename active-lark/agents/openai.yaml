@@ -1,0 +1,4 @@
+interface:
+  display_name: "Active Lark"
+  short_description: "Operate Feishu/Lark safely with lark-cli."
+  default_prompt: "Use Active Lark to inspect auth, search or create Feishu docs, publish Markdown reports, send messages, work with Sheets, Calendar, Tasks, Base, Drive, Wiki, and other Lark resources through lark-cli."

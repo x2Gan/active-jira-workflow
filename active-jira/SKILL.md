@@ -99,6 +99,7 @@ Important fixed rules from that reference:
 - For Active Bug creation, required fields are `project`, `issuetype`, `summary`, `security`, `customfield_10401`, `customfield_10404`, and `customfield_11000`.
 - For Epic creation, also include `customfield_10103` / Epic Name. For Sub-task creation, also include `parent`.
 - Do not use frozen enum values for dynamic fields such as `project`, `versions`, `fixVersions`, `components`, `customfield_10800`, `customfield_12700`, `status`, user fields, `parent`, or `customfield_10101`.
+- Do not freeze or auto-fill sensitive access-control or org-ownership values such as `security` or `customfield_11801`; only query and fill them when the user explicitly asks.
 - For an existing Jira, read actual values with `python active-jira/scripts/query_jira_field_options.py issue <ISSUE-KEY> --fields project,versions,fixVersions,customfield_10800,customfield_12700,status`; the helper uses local `jira issue view --raw` for this path.
 - Before creating a new Jira, query and match legal values with `python active-jira/scripts/query_jira_field_options.py create --project <PROJECT> --issue-type <TYPE> --fields versions,fixVersions,customfield_10800,customfield_12700 --match <keyword>`; the helper uses Jira REST metadata here because JiraCLI does not expose stable createmeta/editmeta commands.
 - Search visible projects with `python active-jira/scripts/query_jira_field_options.py projects --match <keyword>`; the helper uses local `jira project list` for this path.

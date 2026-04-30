@@ -19,6 +19,7 @@
 - `status` and `resolution` are workflow fields. Move/transition issues instead of setting them as ordinary create custom fields.
 - `components`、`versions`、`fixVersions`、`status` 等可能受项目配置影响；若目标项目与本文档枚举不一致、Jira 拒绝字段值，或用户要求刷新，则按目标项目重新读取 Jira metadata。
 - User fields such as `assignee`, `reporter`, and `customfield_10304` do not have static enumerations; resolve users by Jira username/display name/email through Jira user search or CLI assignment semantics.
+- 涉及权限控制或组织归属的敏感字段，如 `security`、`customfield_11801`，不要在规则文档中固化具体枚举值，也不要默认自动填写；仅在用户明确要求时按目标项目实时查询。
 - Free text / date / attachment / link fields have no enumerations; validate by type and only fill when the user provided content or a project rule clearly applies.
 
 ## 动态字段查询规则
@@ -30,6 +31,7 @@
 | 字段 | 字段 ID | 动态原因 | 查询方法 |
 | --- | --- | --- | --- |
 | Project | `project` | 项目列表随权限和组织配置变化 | `python active-jira/scripts/query_jira_field_options.py projects --match <keyword>` |
+| Security Level | `security` | 权限级别属于敏感访问控制配置，且可能随项目与权限变化 | `python active-jira/scripts/query_jira_field_options.py create --project <PROJECT> --issue-type <TYPE> --fields security --match <keyword>` |
 | Status | `status` | 状态受项目工作流和 issue type 影响 | `python active-jira/scripts/query_jira_field_options.py create --project <PROJECT> --issue-type <TYPE> --fields status` |
 | Component/s | `components` | 组件是项目级配置 | `python active-jira/scripts/query_jira_field_options.py create --project <PROJECT> --issue-type <TYPE> --fields components --match <keyword>` |
 | Affects Version/s | `versions` | 版本是项目级配置 | `python active-jira/scripts/query_jira_field_options.py create --project <PROJECT> --issue-type <TYPE> --fields versions --match <keyword>` |
@@ -66,13 +68,13 @@ python active-jira/scripts/query_jira_field_options.py create --project <PROJECT
 
 | Jira 类型 | 必填字段 | 可选创建字段 | 合法状态 |
 | --- | --- | --- | --- |
-| Epic | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, Epic Name / `customfield_10103`, Security Level / `security`, Project / `project` | Priority / `priority`, Fix Version/s / `fixVersions`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Linked Issues / `issuelinks`, Gerrit_Url / `customfield_11200`, Description / `description`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Labels / `labels`, SYNC_ISSUE / `customfield_10720`, Status whiteboard / `customfield_10717`, 归属Team(Ownership Team) / `customfield_11801`, Affects Version/s / `versions`, 测试轮次 / `customfield_12300`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, In Review, Closed |
+| Epic | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, Epic Name / `customfield_10103`, Security Level / `security`, Project / `project` | Priority / `priority`, Fix Version/s / `fixVersions`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Linked Issues / `issuelinks`, Gerrit_Url / `customfield_11200`, Description / `description`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Labels / `labels`, SYNC_ISSUE / `customfield_10720`, Status whiteboard / `customfield_10717`, Affects Version/s / `versions`, 测试轮次 / `customfield_12300`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, In Review, Closed |
 | Meeting | Summary / `summary`, Issue Type / `issuetype`, Security Level / `security`, Project / `project` | Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Description / `description`, Log Work / `worklog`, Fix Version/s / `fixVersions`, Labels / `labels`, Assignee / `assignee` | Open, Closed |
-| Task | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, Security Level / `security`, Project / `project` | Priority / `priority`, Fix Version/s / `fixVersions`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Linked Issues / `issuelinks`, Gerrit_Url / `customfield_11200`, Description / `description`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Labels / `labels`, SYNC_ISSUE / `customfield_10720`, Status whiteboard / `customfield_10717`, 归属Team(Ownership Team) / `customfield_11801`, Affects Version/s / `versions`, 测试轮次 / `customfield_12300`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, Resolved, Closed, Reopened, Pending |
-| Bug | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, 报修平台(Repair platform) / `customfield_10404`, 发现问题阶段(Problem discovery stage) / `customfield_11000`, Security Level / `security`, Project / `project` | Priority / `priority`, Fix Version/s / `fixVersions`, Affects Version/s / `versions`, 详细描述 / `customfield_10513`, Labels / `labels`, Environment / `environment`, Attachment / `attachment`, Linked Issues / `issuelinks`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, 问题概率(problem probability) / `customfield_10716`, Gerrit_Url / `customfield_11200`, Log Work / `worklog`, Time Tracking / `timetracking`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Follower / `customfield_10304`, 引入问题阶段 / `customfield_11001`, RootCause Analysis / `customfield_11002`, SYNC_ISSUE / `customfield_10720`, Description / `description`, Status whiteboard / `customfield_10717`, 归属Team(Ownership Team) / `customfield_11801`, 原因分类 / `customfield_12005`, 改进措施 / `customfield_12002`, 研发验证结果 / `customfield_12003`, Reopen原因分类 / `customfield_12400`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, Resolved, Closed, Reopened, Pending |
-| Improvement | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, Security Level / `security`, Project / `project` | Priority / `priority`, Fix Version/s / `fixVersions`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Linked Issues / `issuelinks`, Gerrit_Url / `customfield_11200`, Description / `description`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Labels / `labels`, SYNC_ISSUE / `customfield_10720`, Status whiteboard / `customfield_10717`, 归属Team(Ownership Team) / `customfield_11801`, Affects Version/s / `versions`, 测试轮次 / `customfield_12300`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, Resolved, Closed, Reopened, Pending |
-| New Feature | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, Security Level / `security`, Project / `project` | Priority / `priority`, Fix Version/s / `fixVersions`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Linked Issues / `issuelinks`, Gerrit_Url / `customfield_11200`, Description / `description`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Labels / `labels`, SYNC_ISSUE / `customfield_10720`, Status whiteboard / `customfield_10717`, 归属Team(Ownership Team) / `customfield_11801`, Affects Version/s / `versions`, 测试轮次 / `customfield_12300`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, Resolved, Closed, Reopened, Pending |
-| Sub-task | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, Security Level / `security`, Project / `project`, Parent / `parent` | Priority / `priority`, Fix Version/s / `fixVersions`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Linked Issues / `issuelinks`, Gerrit_Url / `customfield_11200`, Description / `description`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Labels / `labels`, SYNC_ISSUE / `customfield_10720`, Status whiteboard / `customfield_10717`, 归属Team(Ownership Team) / `customfield_11801`, Affects Version/s / `versions`, 测试轮次 / `customfield_12300`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, Resolved, Closed, Reopened, Pending |
+| Task | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, Security Level / `security`, Project / `project` | Priority / `priority`, Fix Version/s / `fixVersions`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Linked Issues / `issuelinks`, Gerrit_Url / `customfield_11200`, Description / `description`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Labels / `labels`, SYNC_ISSUE / `customfield_10720`, Status whiteboard / `customfield_10717`, Affects Version/s / `versions`, 测试轮次 / `customfield_12300`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, Resolved, Closed, Reopened, Pending |
+| Bug | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, 报修平台(Repair platform) / `customfield_10404`, 发现问题阶段(Problem discovery stage) / `customfield_11000`, Security Level / `security`, Project / `project` | Priority / `priority`, Fix Version/s / `fixVersions`, Affects Version/s / `versions`, 详细描述 / `customfield_10513`, Labels / `labels`, Environment / `environment`, Attachment / `attachment`, Linked Issues / `issuelinks`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, 问题概率(problem probability) / `customfield_10716`, Gerrit_Url / `customfield_11200`, Log Work / `worklog`, Time Tracking / `timetracking`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Follower / `customfield_10304`, 引入问题阶段 / `customfield_11001`, RootCause Analysis / `customfield_11002`, SYNC_ISSUE / `customfield_10720`, Description / `description`, Status whiteboard / `customfield_10717`, 原因分类 / `customfield_12005`, 改进措施 / `customfield_12002`, 研发验证结果 / `customfield_12003`, Reopen原因分类 / `customfield_12400`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, Resolved, Closed, Reopened, Pending |
+| Improvement | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, Security Level / `security`, Project / `project` | Priority / `priority`, Fix Version/s / `fixVersions`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Linked Issues / `issuelinks`, Gerrit_Url / `customfield_11200`, Description / `description`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Labels / `labels`, SYNC_ISSUE / `customfield_10720`, Status whiteboard / `customfield_10717`, Affects Version/s / `versions`, 测试轮次 / `customfield_12300`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, Resolved, Closed, Reopened, Pending |
+| New Feature | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, Security Level / `security`, Project / `project` | Priority / `priority`, Fix Version/s / `fixVersions`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Linked Issues / `issuelinks`, Gerrit_Url / `customfield_11200`, Description / `description`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Labels / `labels`, SYNC_ISSUE / `customfield_10720`, Status whiteboard / `customfield_10717`, Affects Version/s / `versions`, 测试轮次 / `customfield_12300`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, Resolved, Closed, Reopened, Pending |
+| Sub-task | Summary / `summary`, Issue Type / `issuetype`, Severity / `customfield_10401`, Security Level / `security`, Project / `project`, Parent / `parent` | Priority / `priority`, Fix Version/s / `fixVersions`, Component/s / `components`, Start date / `customfield_10702`, Due Date / `duedate`, Time Tracking / `timetracking`, Linked Issues / `issuelinks`, Gerrit_Url / `customfield_11200`, Description / `description`, Integration / `customfield_11401`, Epic Link / `customfield_10101`, Products / `customfield_10800`, Labels / `labels`, SYNC_ISSUE / `customfield_10720`, Status whiteboard / `customfield_10717`, Affects Version/s / `versions`, 测试轮次 / `customfield_12300`, 规划版本 / `customfield_12700`, Assignee / `assignee` | Open, In Progress, Resolved, Closed, Reopened, Pending |
 
 ## 字段总表
 
@@ -82,7 +84,7 @@ python active-jira/scripts/query_jira_field_options.py create --project <PROJECT
 | 身份与流程 | Parent | `parent` | issuelink | Sub-task | Sub-task | 0 | - |
 | 身份与流程 | Project | `project` | project | Epic, Meeting, Task, Bug, Improvement, New Feature, Sub-task | Epic, Meeting, Task, Bug, Improvement, New Feature, Sub-task | 动态查询 | 使用 `projects --match` 或上下文明确的项目 key；不要固化单个项目 |
 | 身份与流程 | Resolution | `resolution` | resolution | Epic, Meeting, Task, Bug, Improvement, New Feature, Sub-task | optional / not create-required | 0 | workflow outcome; normally set by transition, not direct create/edit |
-| 身份与流程 | Security Level | `security` | securitylevel | Epic, Meeting, Task, Bug, Bug(edit screen), Improvement, New Feature, Sub-task | Epic, Meeting, Task, Bug, Bug(edit screen), Improvement, New Feature, Sub-task | 11 | present in sampled Bug editmeta |
+| 身份与流程 | Security Level | `security` | securitylevel | Epic, Meeting, Task, Bug, Bug(edit screen), Improvement, New Feature, Sub-task | Epic, Meeting, Task, Bug, Bug(edit screen), Improvement, New Feature, Sub-task | 动态查询 | 敏感访问控制字段；不要固化具体枚举值，仅在用户明确要求时按目标项目查询 |
 | 身份与流程 | Status | `status` | workflow-status | Epic, Meeting, Task, Bug, Improvement, New Feature, Sub-task | optional / not create-required | 动态查询 | 工作流字段；按目标项目和 issue type 查询，流转时使用 transition/move |
 | 身份与流程 | Summary | `summary` | string | Epic, Meeting, Task, Bug, Bug(edit screen), Improvement, New Feature, Sub-task | Epic, Meeting, Task, Bug, Bug(edit screen), Improvement, New Feature, Sub-task | 0 | present in sampled Bug editmeta |
 | 人员协作 | Assignee | `assignee` | user | Epic, Meeting, Task, Bug, Bug(edit screen), Improvement, New Feature, Sub-task | optional / not create-required | 0 | present in sampled Bug editmeta |
@@ -131,7 +133,6 @@ python active-jira/scripts/query_jira_field_options.py create --project <PROJECT
 | 审计只读 | Updated | `updated` | datetime/read-only | Epic, Meeting, Task, Bug, Improvement, New Feature, Sub-task | optional / not create-required | 0 | read-only audit field; useful for stale reports |
 | 其他字段 | Requirement Catalog | `customfield_11447` | raw-observed | raw observed only | optional / not create-required | 0 | observed value: 其它; raw issue has value; not in sampled create/edit metadata |
 | 其他字段 | Resolution[外部小米专用] | `customfield_11700` | raw-observed | raw observed only | optional / not create-required | 0 | observed value: Fixed; raw issue has value; not in sampled create/edit metadata |
-| 其他字段 | 归属Team(Ownership Team) | `customfield_11801` | option | Epic, Task, Bug, Bug(edit screen), Improvement, New Feature, Sub-task | optional / not create-required | 130 | present in sampled Bug editmeta |
 
 ## 枚举值
 
@@ -146,20 +147,6 @@ python active-jira/scripts/query_jira_field_options.py create --project <PROJECT
 - Improvement
 - New Feature
 - Sub-task
-
-### Security Level / `security`
-
-- AMBIQ 公司可见(包括公司内成员和阿波罗公司成员)
-- P公司可见(包括公司内成员和外部成员)
-- RTL公司可见(包括公司内成员和RTL公司成员)
-- W公司-场测(包括公司内成员和外部成员)
-- W公司-研发(包括公司内成员和外部成员)
-- Y公司可见(包括公司内成员和外部成员)
-- 仅公司内成员可见(Only visible to members within the company)
-- 新思公司可见(包括公司内成员和新思公司成员)
-- 瀛通公司(FLEX项目成员)
-- 英飞凌公司可见(包括公司内成员和英飞凌)
-- 领为公司可见(包括公司内成员和领为公司成员)
 
 ### Priority / `priority`
 
@@ -317,139 +304,6 @@ python active-jira/scripts/query_jira_field_options.py create --project <PROJECT
 - 6
 - 7
 - 8
-
-### 归属Team(Ownership Team) / `customfield_11801`
-
-- AI及创新研究院
-- AI及创新研究院-算法工程部-北京工程组
-- AI及创新研究院-算法工程部-合肥工程组
-- APP事业部
-- APP事业部-产品部
-- APP事业部-用户运营和用户研究部
-- APP事业部-视觉设计部
-- APP事业部-软件研发部
-- APP事业部-软件研发部-项目管理组
-- APP健康功能组
-- APP平台组
-- APP测试组
-- APP睡眠组
-- APP设备组
-- APP运动组
-- Balance智能手表事业部
-- Balance智能手表事业部-产品部
-- Balance智能手表事业部-产品部-设计组
-- Balance智能手表事业部-应用开发一组(健康）
-- Balance智能手表事业部-应用开发三组(基础）
-- Balance智能手表事业部-应用开发二组(系统）
-- Balance智能手表事业部-应用开发四组(小程序）
-- Balance智能手表事业部-成都开发组
-- Balance智能手表事业部-硬件部
-- Balance智能手表事业部-硬件部-质量与售后组
-- Balance智能手表事业部-结构部
-- Balance智能手表事业部-软件部
-- Balance智能手表事业部-软件部-应用开发组
-- Balance智能手表事业部-软件部-软件架构组
-- Balance智能手表事业部-软件部-软件项目组
-- Balance智能手表事业部-软件部-驱动开发组
-- Balance智能手表事业部-驱动一组
-- Balance智能手表事业部-驱动三组
-- Balance智能手表事业部-驱动二组
-- Balance智能手表事业部-驱动四组
-- CTO办公室-研发效能部
-- ZeppOS事业部
-- ZeppOS事业部-AI产品与生态部
-- ZeppOS事业部-中国产品部
-- ZeppOS事业部-中间件部
-- ZeppOS事业部-中间件部-中间件一组
-- ZeppOS事业部-中间件部-中间件三组
-- ZeppOS事业部-中间件部-中间件二组
-- ZeppOS事业部-产品部
-- ZeppOS事业部-产品部-用户与产品研究组
-- ZeppOS事业部-内核与架构部
-- ZeppOS事业部-内核与架构部-GUI引擎组
-- ZeppOS事业部-内核与架构部-内核与架构组
-- ZeppOS事业部-固件工程部
-- ZeppOS事业部-固件工程部-Balance固件组
-- ZeppOS事业部-固件工程部-工具与效率组
-- ZeppOS事业部-应用平台部
-- ZeppOS事业部-应用平台部-JS平台组
-- ZeppOS事业部-应用平台部-JS生态组
-- ZeppOS事业部-应用平台部-控件组
-- ZeppOS事业部-应用开发部
-- ZeppOS事业部-应用开发部-健康应用组
-- ZeppOS事业部-应用开发部-多媒体应用组
-- ZeppOS事业部-应用开发部-工具应用组
-- ZeppOS事业部-应用开发部-系统应用组
-- ZeppOS事业部-应用开发部-运动应用组
-- ZeppOS事业部-应用生态部
-- ZeppOS事业部-应用生态部-应用组
-- ZeppOS事业部-硬件系统平台部
-- ZeppOS事业部-硬件系统平台部-功耗组
-- ZeppOS事业部-硬件系统平台部-外设组
-- ZeppOS事业部-硬件系统平台部-存储组
-- ZeppOS事业部-系统产品与设计部
-- ZeppOS事业部-系统产品与设计部-用户与产品研究组
-- ZeppOS事业部-系统产品与设计部-视觉设计组
-- ZeppOS事业部-通信系统平台部
-- ZeppOS事业部-通信系统平台部-蓝牙平台组
-- ZeppOS事业部-通信系统平台部-蓝牙应用组
-- ZeppOS事业部-通信系统平台部-通信组
-- 供应链中心
-- 供应链中心-供应质量与运作部-电子件质量组
-- 助听器及TWS事业部
-- 助听器及TWS事业部-产品管理部
-- 助听器及TWS事业部-硬件开发部
-- 助听器及TWS事业部-结构开发部
-- 助听器及TWS事业部-营销及支持部
-- 助听器及TWS事业部-质量与可靠性部
-- 助听器及TWS事业部-软件开发部
-- 助听器及TWS事业部-项目管理部
-- 外包同学(Outsourced classmates)
-- 大数据及云平台事业部
-- 大数据及云平台事业部-工程平台部
-- 大数据及云平台事业部-应用中台部
-- 大数据及云平台事业部-数据应用部
-- 大数据及云平台事业部-设备中台部
-- 工业设计中心
-- 市场部
-- 测试中心
-- 硬件平台部
-- 芯片事业部
-- 芯片事业部-应用及软件
-- 运动手表事业部
-- 运动手表事业部-产品质量部
-- 运动手表事业部-产品质量部-硬件质量组
-- 运动手表事业部-硬件部
-- 运动手表事业部-硬件部-硬件工程组
-- 运动手表事业部-硬件部-硬件项目组
-- 运动手表事业部-硬件部-结构工艺组
-- 运动手表事业部-社区运营与产品研究部
-- 运动手表事业部-社区运营与产品研究部-UI设计组
-- 运动手表事业部-社区运营与产品部-硬件产品组
-- 运动手表事业部-社区运营与产品部-软件产品组
-- 运动手表事业部-软件部
-- 运动手表事业部-软件部-GNSS组
-- 运动手表事业部-软件部-传感器组
-- 运动手表事业部-软件部-平台组
-- 运动手表事业部-软件部-软件项目组
-- 运动手表事业部-软件部-运动应用组
-- 运动手表事业部-软件部-运动架构组
-- 运动手表事业部-运动应用组
-- 重点业务产品商务和支持中心
-- 青春手表事业部
-- 青春手表事业部-产品部
-- 青春手表事业部-应用开发一组
-- 青春手表事业部-应用开发二组
-- 青春手表事业部-硬件部
-- 青春手表事业部-结构部
-- 青春手表事业部-软件部
-- 青春手表事业部-软件部-应用开发组
-- 青春手表事业部-软件部-软件架构组
-- 青春手表事业部-软件部-软件项目组
-- 青春手表事业部-项目与质量部
-- 青春手表事业部-项目与质量部-产品质量组
-- 青春手表事业部-驱动组
-- 硬件合作方
 
 ## Raw 观察字段 / 未复核前不要用于创建编辑
 

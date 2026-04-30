@@ -286,6 +286,13 @@ python active-lark/scripts/publish_markdown_doc.py doc/active-jira-report-长期
 python active-lark/scripts/publish_markdown_doc.py doc/active-jira-report-长期未处理Jira报告查询.md
 ```
 
+长期未处理 Jira 报告也有端到端发布入口，可生成报告、创建飞书文档，并在提供 `chat_id` 后推送到飞书群聊：
+
+```bash
+python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --dry-run
+python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --chat-id oc_xxx --grant-chat-view --dry-run
+```
+
 发送消息、创建日程、覆盖文档、删除文件、审批等写操作都属于外部副作用；`active-lark` 会要求目标、内容和身份明确，并优先使用 `--dry-run` 预览。
 
 ### `active-jira`
@@ -358,6 +365,7 @@ python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA
 python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 14d
 python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w --assignee-current-user
 python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w --dry-run
+python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w --output reports/geneva-stale-jira.md
 ```
 
 输出 Markdown 报告固定包含查询信息、开头 Highlight、完整 Jira 清单，以及文档末尾汇总。Highlight 用于给 PM/PL 快速识别最应该立即修复或确认责任人的 Jira，表格固定为：
@@ -379,6 +387,19 @@ project = GENEVA AND created <= "YYYY-MM-DD" AND status in (Open, "In Progress",
 ```
 
 这个场景和 jira-cli 的通用能力是分开的：通用能力负责“怎么查 Jira”，场景化脚本负责“Active/Geneva 业务口径是什么、结果怎么展示”。
+
+如果需要把报告发布到飞书文档并推送到机器人所在群聊，可以使用发布编排脚本。`--dry-run` 会预览飞书写请求；真正发送前请先确认稳定的 `oc_...` 群聊 ID：
+
+```bash
+python active-jira-report/scripts/publish_stale_jira_report_to_lark.py \
+  --project GENEVA \
+  --age 1w \
+  --chat-id oc_xxx \
+  --grant-chat-view \
+  --dry-run
+```
+
+确认后去掉 `--dry-run` 即可创建飞书文档、为目标群授予查看权限，并发送文档链接。也可以用 `--doc <DOC_URL_OR_TOKEN> --doc-command append|overwrite` 更新已有文档，用 `--parent-token` 或 `--parent-position` 指定新文档位置。
 
 如果你只想安装其中一个 Skill，也可以覆盖默认行为：
 

@@ -69,6 +69,7 @@ lark-cli docs +fetch --api-version v2 --doc '<DOC_URL_OR_TOKEN>' --doc-format ma
 lark-cli docs +update --api-version v2 --doc '<DOC_URL_OR_TOKEN>' --command append --doc-format markdown --content @appendix.md
 python active-lark/scripts/publish_markdown_doc.py doc/active-jira-report.md --dry-run
 python active-lark/scripts/publish_markdown_doc.py doc/active-jira-report.md
+python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --chat-id oc_xxx --grant-chat-view --dry-run
 ```
 
 Search and resolve targets before sending:

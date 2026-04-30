@@ -26,6 +26,7 @@ Script boundary:
 - Treat `../active-jira/scripts/query_stale_jiras.py` as a base stale-query/JQL helper, not as a complete project-report generator.
 - Do not move that script into this skill unless it becomes report-specific and stops being useful as a generic Jira helper.
 - Use `scripts/generate_stale_jira_report.py` for deterministic long-unhandled Jira reports. It has no default project or age; pass both from the user's trigger phrase.
+- Use `scripts/publish_stale_jira_report_to_lark.py` when the user asks to publish a long-unhandled Jira report to a Lark/Feishu document or send the document link to a known Lark chat.
 
 ## Trigger examples
 
@@ -124,15 +125,64 @@ Useful explicit examples:
 python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w
 python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 14d --assignee-current-user
 python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1mo --dry-run
+python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w --output reports/geneva-stale-jira.md
 ```
 
 Useful generator options:
 
+- `--output <FILE>`: write the Markdown report to a file instead of stdout.
 - `--comments none|top|all`: default is `none`; use `top --comments-top <N>` for only the highest-risk rows.
 - `--enrich-details missing-severity|all|none`: default is `missing-severity`, so Priority does not prevent fetching a missing true Severity field.
 - `--severity-field <FIELD_OR_PATH>`: add a project-specific Severity field path when known.
 - `--highlight-limit <N>`: default is `5`; controls how many issues appear in the opening Highlight.
 - `--input-json <FILE_OR_->`: generate a report from saved Jira raw JSON without querying live Jira, useful for testing or replay.
+
+### 4. Publish long-unhandled Jira report to Lark
+
+Use this workflow only when the user explicitly asks to create a Lark/Feishu document, send a message, grant document permission, or otherwise publish outside Jira. Publishing and messaging are external side effects.
+
+Recommended command for creating a document and returning its URL:
+
+```bash
+python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project <PROJECT> --age <AGE>
+```
+
+Recommended dry-run before sending to a chat:
+
+```bash
+python active-jira-report/scripts/publish_stale_jira_report_to_lark.py \
+  --project GENEVA \
+  --age 1w \
+  --chat-id oc_xxx \
+  --grant-chat-view \
+  --dry-run
+```
+
+Execute without `--dry-run` only after the target chat is clear:
+
+```bash
+python active-jira-report/scripts/publish_stale_jira_report_to_lark.py \
+  --project GENEVA \
+  --age 1w \
+  --chat-id oc_xxx \
+  --grant-chat-view
+```
+
+Publishing behavior:
+
+- The script writes a local Markdown report first, defaulting to `reports/<project>-stale-jira-<age>-<timestamp>.md`.
+- It creates a new Lark document by default; pass `--doc <DOC_URL_OR_TOKEN> --doc-command append|overwrite` to update an existing document.
+- Pass `--parent-token` or `--parent-position` when the document must be created in a specific Drive folder or Wiki location.
+- `--chat-id oc_xxx` sends the published document link with `lark-cli im +messages-send --as bot`.
+- `--grant-chat-view` grants the target chat view permission before sending, using the published document token.
+- Unknown options are forwarded to `generate_stale_jira_report.py`, so report filters such as `--comments top`, `--assignee-current-user`, or `--input-json` still work.
+
+Safety rules:
+
+- Do not guess a Lark chat. Resolve it first with `lark-cli im +chat-search --query '<name>'` or ask the user for a stable `oc_...` chat ID.
+- Run `--dry-run` before the first send to a new chat or when document permission is uncertain.
+- If `lark-cli` reports missing IM scopes, ask the user to authorize the exact scopes shown by the CLI or use bot identity only when the bot is already configured for that chat.
+- Do not make a document public by default. Prefer granting view permission to the explicit target chat when needed.
 
 Always keep query provenance in the report: query time, command, project, age threshold, and generated JQL.
 

@@ -760,6 +760,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--comment-summary-limit", type=int, default=120, help="Max comment summary characters.")
     parser.add_argument("--summary-limit", type=int, default=80, help="Max issue summary characters.")
     parser.add_argument("--highlight-limit", type=int, default=5, help="Max Jira issues to include in the opening Highlight.")
+    parser.add_argument("--output", help="Write the Markdown report to this file instead of stdout.")
     parser.add_argument("--dry-run", action="store_true", help="Print JQL and command plan without querying Jira.")
     parser.add_argument("--verbose", action="store_true", help="Print progress to stderr.")
     return parser.parse_args(argv)
@@ -815,6 +816,9 @@ def main(argv: list[str]) -> int:
             print(report_command)
             print("\nData command pattern:")
             print(command_pattern)
+            if args.output:
+                print("\nReport output:")
+                print(Path(args.output).expanduser())
             return 0
 
         input_mode = bool(args.input_json)
@@ -874,21 +878,26 @@ def main(argv: list[str]) -> int:
         else:
             comment_policy = "未抓取评论，评论摘要列以 - 表示"
 
-        print(
-            build_report(
-                rows,
-                project,
-                args.age,
-                query_time,
-                report_command,
-                command_pattern,
-                jql,
-                len(page_commands),
-                comment_policy,
-                input_mode,
-                args.highlight_limit,
-            )
+        report = build_report(
+            rows,
+            project,
+            args.age,
+            query_time,
+            report_command,
+            command_pattern,
+            jql,
+            len(page_commands),
+            comment_policy,
+            input_mode,
+            args.highlight_limit,
         )
+        if args.output:
+            output_path = Path(args.output).expanduser()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(report + "\n", encoding="utf-8")
+            print(f"Wrote report: {output_path}", file=sys.stderr)
+        else:
+            print(report)
         return 0
     except UserError as exc:
         print(f"Error: {exc}", file=sys.stderr)

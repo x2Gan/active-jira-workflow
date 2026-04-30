@@ -481,11 +481,11 @@ lark-cli docs +create \
 
 候选方案：
 
-1. [ ] 新增 `active-jira-report/scripts/publish_lark_doc.sh`。
-2. [ ] 在 `active-jira-report/SKILL.md` 中加入“发布到飞书文档”工作流。
+1. [x] 新增 `active-jira-report/scripts/publish_stale_jira_report_to_lark.py`。
+2. [x] 在 `active-jira-report/SKILL.md` 中加入“发布到飞书文档”工作流。
 3. [ ] 不新增脚本，由 Agent 直接调用 `lark-cli docs +create`。
 
-推荐先选方案 2 或 3，避免过早封装。
+当前已选择独立编排脚本：报告生成仍由 `generate_stale_jira_report.py` 负责，飞书文档创建复用 `active-lark/scripts/publish_markdown_doc.py`，消息发送与权限授权通过 `lark-cli` dry-run 优先验证。
 
 ### P5.3 发送给指定对象
 
@@ -493,9 +493,10 @@ lark-cli docs +create \
 
 - [ ] 解析目标对象：用户、群、邮箱、open_id、chat_id。
 - [ ] 搜索或确认群聊。
-- [ ] 配置文档权限。
-- [ ] 发送文档 URL。
-- [ ] 发送前展示目标对象和文档标题，要求用户确认。
+- [x] 支持传入稳定 `chat_id`。
+- [x] 配置文档权限。
+- [x] 发送文档 URL。
+- [x] 发送前支持 `--dry-run` 预览目标对象和消息内容。
 
 注意：
 

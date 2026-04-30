@@ -10,6 +10,7 @@ age calculation, and the required Active Jira Report Markdown table.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import re
 import shlex
@@ -59,6 +60,15 @@ TABLE_COLUMNS = [
     "责任人",
     "问题摘要",
     "评论摘要",
+]
+HIGHLIGHT_COLUMNS = [
+    "Jira",
+    "紧急程度",
+    "超期天数",
+    "状态",
+    "责任人",
+    "推荐理由",
+    "摘要",
 ]
 
 
@@ -421,6 +431,63 @@ def sort_report_issues(rows: list[ReportIssue]) -> list[ReportIssue]:
     )
 
 
+def sort_oldest_issues(rows: list[ReportIssue]) -> list[ReportIssue]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row.overdue_days,
+            severity_rank(row.severity),
+            row.key,
+        ),
+    )
+
+
+def status_risk_rank(status: str) -> float:
+    normalized = (status or "").strip().lower()
+    ranks = {
+        "reopened": 0.0,
+        "open": 1.0,
+        "in progress": 2.0,
+        "pending": 3.0,
+        "resolved": 4.0,
+        "in review": 4.5,
+        "closed": 99.0,
+    }
+    return ranks.get(normalized, 10.0)
+
+
+def sort_highlight_issues(rows: list[ReportIssue]) -> list[ReportIssue]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            severity_rank(row.severity),
+            status_risk_rank(row.status),
+            0 if row.assignee.lower() == "unassigned" else 1,
+            -row.overdue_days,
+            row.key,
+        ),
+    )
+
+
+def format_distribution(counts: Counter[str], severity_order: bool = False) -> str:
+    if not counts:
+        return "-"
+    if severity_order:
+        items = sorted(counts.items(), key=lambda item: (severity_rank(item[0]), item[0]))
+    else:
+        items = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return ", ".join(f"{name} {count}" for name, count in items)
+
+
+def highlight_reason(row: ReportIssue) -> str:
+    parts = [f"紧急程度 {row.severity}", f"已超期 {row.overdue_days:.1f} 天"]
+    if row.status:
+        parts.append(f"状态 {row.status}")
+    if row.assignee.lower() == "unassigned":
+        parts.append("当前未分配责任人")
+    return "，".join(parts)
+
+
 def truncate(value: str, limit: int) -> str:
     value = normalize_space(value)
     if limit <= 0 or len(value) <= limit:
@@ -457,6 +524,113 @@ def comments_from_raw(issue: dict[str, Any], text_limit: int) -> str:
     return truncate(" / ".join(part for part in bodies if part), text_limit) or "-"
 
 
+def append_highlight_section(lines: list[str], sorted_rows: list[ReportIssue], limit: int) -> None:
+    highlight_rows = sort_highlight_issues(sorted_rows)[:limit]
+    lines.extend(
+        [
+            "",
+            "## Highlight",
+            "",
+            "建议 PL/项目经理优先推动以下 Jira 的修复或责任确认；排序依据为紧急程度、状态风险、是否未分配责任人和超期天数。",
+            "",
+            "| " + " | ".join(HIGHLIGHT_COLUMNS) + " |",
+            "| " + " | ".join(["---"] * len(HIGHLIGHT_COLUMNS)) + " |",
+        ]
+    )
+    if not highlight_rows:
+        lines.append("| - | - | - | - | - | - | 未查询到需要立即推动的 Jira |")
+        return
+    for row in highlight_rows:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    md_escape(row.key),
+                    md_escape(row.severity),
+                    f"{row.overdue_days:.1f}",
+                    md_escape(row.status),
+                    md_escape(row.assignee),
+                    md_escape(highlight_reason(row)),
+                    md_escape(row.summary),
+                ]
+            )
+            + " |"
+        )
+
+
+def append_summary_section(
+    lines: list[str],
+    sorted_rows: list[ReportIssue],
+    comment_policy: str,
+    source_line: str,
+) -> None:
+    oldest = max(sorted_rows, key=lambda row: row.overdue_days, default=None)
+    unassigned = sum(1 for row in sorted_rows if row.assignee.lower() == "unassigned")
+    status_counts = Counter(row.status or "未设置" for row in sorted_rows)
+    severity_counts = Counter(row.severity or "未设置" for row in sorted_rows)
+    assignee_counts = Counter(row.assignee for row in sorted_rows if row.assignee.lower() != "unassigned")
+    assignee_top = sorted(assignee_counts.items(), key=lambda item: (-item[1], item[0]))[:5]
+    oldest_top = sort_oldest_issues(sorted_rows)[:5]
+
+    lines.extend(
+        [
+            "",
+            "## 汇总",
+            "",
+            f"总数: {len(sorted_rows)}",
+            f"状态分布: {format_distribution(status_counts)}",
+            f"紧急程度: {format_distribution(severity_counts, severity_order=True)}",
+            f"未分配: {unassigned}",
+            f"最久未处理: {oldest.key + '，' + f'{oldest.overdue_days:.1f}' + ' 天' if oldest else '-'}",
+            "",
+            "### 责任人数量 Top 5",
+            "",
+            "| 责任人 | 数量 |",
+            "| --- | --- |",
+        ]
+    )
+    if assignee_top:
+        for assignee, count in assignee_top:
+            lines.append(f"| {md_escape(assignee)} | {count} |")
+    else:
+        lines.append("| - | - |")
+
+    lines.extend(
+        [
+            "",
+            "### 最久未处理 Top 5",
+            "",
+            "| Jira | 紧急程度 | 超期天数 | 状态 | 责任人 | 摘要 |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    if oldest_top:
+        for row in oldest_top:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        md_escape(row.key),
+                        md_escape(row.severity),
+                        f"{row.overdue_days:.1f}",
+                        md_escape(row.status),
+                        md_escape(row.assignee),
+                        md_escape(row.summary),
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("| - | - | - | - | - | - |")
+
+    lines.extend(
+        [
+            "",
+            f"{comment_policy}；紧急程度来源: {source_line}。",
+        ]
+    )
+
+
 def build_report(
     rows: list[ReportIssue],
     project: str,
@@ -468,11 +642,9 @@ def build_report(
     page_count: int,
     comment_policy: str,
     input_mode: bool,
+    highlight_limit: int,
 ) -> str:
     sorted_rows = sort_report_issues(rows)
-    highest = sorted_rows[0].severity if sorted_rows else "无"
-    oldest = max(sorted_rows, key=lambda row: row.overdue_days, default=None)
-    unassigned = sum(1 for row in sorted_rows if row.assignee.lower() == "unassigned")
     severity_sources = sorted({row.severity_source or "未设置" for row in sorted_rows}) if sorted_rows else []
     source_line = ", ".join(severity_sources) if severity_sources else "-"
     time_label = f"{query_time.strftime('%Y-%m-%d %H:%M:%S')} {local_timezone_label(query_time)}"
@@ -491,19 +663,18 @@ def build_report(
         f"- 分页: {'input-json' if input_mode else f'{page_count} 页'}",
         f"- 评论摘要策略: {comment_policy}",
         f"- Severity 来源: {source_line}",
-        "",
-        "## 汇总",
-        "",
-        f"- 总数: {len(sorted_rows)}",
-        f"- 最高紧急程度: {highest}",
-        f"- 最久未处理: {oldest.key + ' / ' + f'{oldest.overdue_days:.1f}' + ' 天' if oldest else '-'}",
-        f"- 未分配数量: {unassigned}",
-        "",
-        "## Jira 清单",
-        "",
-        "| " + " | ".join(TABLE_COLUMNS) + " |",
-        "| " + " | ".join(["---"] * len(TABLE_COLUMNS)) + " |",
     ]
+
+    append_highlight_section(lines, sorted_rows, highlight_limit)
+    lines.extend(
+        [
+            "",
+            "## Jira 清单",
+            "",
+            "| " + " | ".join(TABLE_COLUMNS) + " |",
+            "| " + " | ".join(["---"] * len(TABLE_COLUMNS)) + " |",
+        ]
+    )
 
     if not sorted_rows:
         lines.append("| - | - | - | - | - | - | - | 未查询到满足条件的 Jira | - |")
@@ -526,6 +697,7 @@ def build_report(
                 )
                 + " |"
             )
+    append_summary_section(lines, sorted_rows, comment_policy, source_line)
     return "\n".join(lines)
 
 
@@ -587,6 +759,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--comment-limit", type=int, default=5, help="Recent comments to request from JiraCLI.")
     parser.add_argument("--comment-summary-limit", type=int, default=120, help="Max comment summary characters.")
     parser.add_argument("--summary-limit", type=int, default=80, help="Max issue summary characters.")
+    parser.add_argument("--highlight-limit", type=int, default=5, help="Max Jira issues to include in the opening Highlight.")
     parser.add_argument("--dry-run", action="store_true", help="Print JQL and command plan without querying Jira.")
     parser.add_argument("--verbose", action="store_true", help="Print progress to stderr.")
     return parser.parse_args(argv)
@@ -610,6 +783,8 @@ def main(argv: list[str]) -> int:
         age_days = parse_age_to_days(args.age)
         if args.page_size < 1 or args.page_size > 100:
             raise UserError("--page-size must be between 1 and 100 because JiraCLI caps issue list pages at 100.")
+        if args.highlight_limit < 0:
+            raise UserError("--highlight-limit must be greater than or equal to 0.")
 
         statuses = split_values(args.statuses) if args.statuses else None
         closed_statuses = split_values(args.closed_statuses) if args.closed_statuses else None
@@ -711,6 +886,7 @@ def main(argv: list[str]) -> int:
                 len(page_commands),
                 comment_policy,
                 input_mode,
+                args.highlight_limit,
             )
         )
         return 0

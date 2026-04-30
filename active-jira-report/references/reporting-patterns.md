@@ -108,8 +108,9 @@ Preferred output:
 - Use `scripts/generate_stale_jira_report.py` after extracting explicit `project` and `age` from the user's trigger phrase.
 - Do not rely on default project or default age values for stale reports; ask if either trigger parameter is missing.
 - Ensure all pages are fetched before reporting totals because `jira issue list` is capped at 100 issues per page.
+- Add an opening Highlight after query info for PM/PL reporting. It should list the issues that most deserve immediate repair or ownership confirmation, with a concise reason based on urgency, status risk, unassigned ownership, and overdue duration.
 - Produce the project-required table shape from `SKILL.md`, including ranking, Severity/urgency, overdue duration, status, owner, issue summary, and comment summary.
-- Add a short summary above the table with total stale issues, highest urgency, oldest issue, unassigned count, and notable blockers when known.
+- Add the fixed summary section at the end of the document with total stale issues, status distribution, urgency distribution, unassigned count, oldest issue, assignee Top 5, oldest-issue Top 5, comment policy, and urgency source.
 
 ## 3. Report writing rules
 

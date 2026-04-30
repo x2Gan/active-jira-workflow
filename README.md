@@ -264,22 +264,29 @@ jira issue delete ISSUE-1 --cascade
 Skill 会使用仓库内脚本：
 
 ```bash
-python active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w
+python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w
 ```
 
 常用变体：
 
 ```bash
-python active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1mo
-python active-jira/scripts/query_stale_jiras.py --project GENEVA --age 14d
-python active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w --assignee-current-user
-python active-jira/scripts/query_stale_jiras.py --project GENEVA --age 1w --dry-run
+python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1mo
+python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 14d
+python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w --assignee-current-user
+python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w --dry-run
 ```
 
-输出表格固定为：
+输出 Markdown 报告固定包含查询信息、开头 Highlight、完整 Jira 清单，以及文档末尾汇总。Highlight 用于给 PM/PL 快速识别最应该立即修复或确认责任人的 Jira，表格固定为：
 
-| Jira | Assignee | Status | Created | Summary |
-| --- | --- | --- | --- | --- |
+| Jira | 紧急程度 | 超期天数 | 状态 | 责任人 | 推荐理由 | 摘要 |
+| --- | --- | --- | --- | --- | --- | --- |
+
+Jira 清单表格固定为：
+
+| 排序 | Jira | Severity/紧急程度 | 创建时间 | 超期时长(天) | 状态 | 责任人 | 问题摘要 | 评论摘要 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+文档末尾汇总包含总数、状态分布、紧急程度分布、未分配数量、最久未处理 Jira、责任人数量 Top 5、最久未处理 Top 5、评论抓取策略和紧急程度字段来源。
 
 默认 JQL 语义：
 

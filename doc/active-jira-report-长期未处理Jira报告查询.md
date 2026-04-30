@@ -27,13 +27,13 @@
 1. 优先使用已有脚本生成并执行基础查询：
 
 ```bash
-python active-jira/scripts/query_stale_jiras.py --project <PROJECT> --age <AGE>
+python active-jira-report/scripts/generate_stale_jira_report.py --project <PROJECT> --age <AGE>
 ```
 
 2. 报告中必须保留脚本生成或实际执行的查询信息，包括查询时间、命令、项目、超时时间、生成的 JQL。需要确认 JQL 时先执行：
 
 ```bash
-python active-jira/scripts/query_stale_jiras.py --project <PROJECT> --age <AGE> --dry-run
+python active-jira-report/scripts/generate_stale_jira_report.py --project <PROJECT> --age <AGE> --dry-run
 ```
 
 3. 若脚本输出字段不足以满足报告要求，应对命中的 Jira 逐条补充详情：
@@ -53,23 +53,55 @@ jira issue view <ISSUE-KEY> --comments 5
 4. Severity 排序优先级为 `P0 > P1 > P2 > P3 > P4 > 未设置/未知`。如果字段值是 `Blocker/Critical/High/Medium/Low` 等非 P 级别，应保留原值，并按项目已有映射或 Jira priority 顺序排序；无法映射时放在 `未知` 分组。
 5. Jira 摘要优先使用 `Summary`；问题描述摘要可从 `Description` 中提炼 1 句，不超过 80 个中文字符。没有描述时使用 `Summary` 补足。
 6. 评论摘要为可选项：当用户明确要求、问题数量较少，或评论中包含阻塞/等待/需要确认等明显风险信息时输出；否则列为 `-`。
+7. Highlight 用于帮助 PM/PL 快速识别最应该立即修复或确认责任人的 Jira。Highlight 放在查询信息之后、完整 Jira 清单之前；选择逻辑按综合风险排序：紧急程度优先，其次状态风险（`Reopened`、`Open`、`In Progress`、`Pending`、`Resolved`、`In Review`），再考虑是否未分配责任人和超期天数。每条 Highlight 必须给出一句简短推荐理由。
 
 #### 输出规则
 1. 默认输出 Markdown 报告，结构固定为：
 - 标题：`<PROJECT> 长期未处理 Jira 报告`
 - 查询信息：查询时间、项目、超时时间、命令、JQL
-- 汇总：总数、最高紧急程度、最久未处理 Jira、未分配数量
+- 开头 Highlight：Agent 综合分析后认为最应该立即修复或确认责任人的 Jira List 简要，面向 PM/PL 快速汇报
 - Jira 清单表格
+- 文档末尾汇总：总数、状态分布、紧急程度分布、未分配数量、最久未处理 Jira、责任人数量 Top 5、最久未处理 Top 5、评论抓取策略和紧急程度字段来源
 - 可选：风险说明/建议行动
-2. Jira 清单表格必须包含以下列：
+2. Highlight 表格必须包含以下列：
+
+| Jira | 紧急程度 | 超期天数 | 状态 | 责任人 | 推荐理由 | 摘要 |
+| --- | --- | --- | --- | --- | --- | --- |
+
+3. Jira 清单表格必须包含以下列：
 
 | 排序 | Jira | Severity/紧急程度 | 创建时间 | 超期时长(天) | 状态 | 责任人 | 问题摘要 | 评论摘要 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-3. Jira 清单排序规则：
+4. Jira 清单排序规则：
 - 第一排序：紧急程度，`P0` 最靠前。
 - 第二排序：创建时间，越早创建越靠前。
 - 第三排序：Jira Key 字典序，保证输出稳定。
-4. Jira 编号应尽量输出为可点击链接；若无法获取 Jira base URL，则只输出 Key。
-5. 如果没有满足条件的 Jira，仍输出查询信息、汇总和空表，并明确写明“未查询到满足条件的 Jira”。
-6. 报告内容应区分事实与判断：表格只放 Jira 原始事实和明确计算值；紧急程度评估、风险和建议放在汇总或建议行动中。
+5. Jira 编号应尽量输出为可点击链接；若无法获取 Jira base URL，则只输出 Key。
+6. 如果没有满足条件的 Jira，仍输出查询信息、Highlight、汇总和空表，并明确写明“未查询到满足条件的 Jira”。
+7. 报告内容应区分事实与判断：完整 Jira 清单只放 Jira 原始事实和明确计算值；Highlight 的推荐理由可以包含基于紧急程度、状态、未分配和超期天数的判断，但必须可追溯到表格字段。
+8. 文档末尾汇总格式固定为：
+
+```markdown
+## 汇总
+
+总数: <count>
+状态分布: <status count list>
+紧急程度: <urgency count list>
+未分配: <count>
+最久未处理: <issue key>，<days> 天
+
+### 责任人数量 Top 5
+
+| 责任人 | 数量 |
+| --- | --- |
+
+### 最久未处理 Top 5
+
+| Jira | 紧急程度 | 超期天数 | 状态 | 责任人 | 摘要 |
+| --- | --- | --- | --- | --- | --- |
+
+<评论抓取策略>；紧急程度来源: <Severity/Priority 字段来源>。
+```
+
+9. 状态分布按数量降序输出；紧急程度分布按 Jira 紧急程度排序输出；责任人 Top 5 不包含 `Unassigned`，未分配数量单独由“未分配”字段体现；最久未处理 Top 5 按超期天数降序输出。

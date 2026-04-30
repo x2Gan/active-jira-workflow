@@ -313,6 +313,10 @@ require_lark_cli() {
   fi
 }
 
+lark_cli_auth_ok() {
+  has_cmd lark-cli && lark-cli auth status >/dev/null 2>&1
+}
+
 install_skill() {
   if is_disabled "$LARK_CLI_SKIP_SKILL"; then
     section "安装 Lark CLI Skill"
@@ -398,6 +402,15 @@ doctor_cmd() {
 }
 
 install_cmd() {
+  if has_cmd lark-cli; then
+    section "Lark CLI 已安装"
+    summary_item "lark-cli" "$(command -v lark-cli)"
+    _version="$(get_lark_cli_version | sed -n '1p')"
+    summary_item "version" "$_version"
+    summary_item "install" "已跳过；如需升级请执行 sh lark-cli.sh update"
+    return 0
+  fi
+
   section "检查基础环境"
   need_cmd node
   need_cmd npm
@@ -521,11 +534,28 @@ update_cmd() {
 bootstrap_cmd() {
   section "Lark CLI 一键接入"
   say "该流程用于准备后续将 Jira Markdown 报告发布为飞书云文档，并发送给指定对象。"
-  warn "流程中会安装官方 Lark CLI，随后需要你在浏览器中完成配置和 OAuth 授权。"
+  warn "流程会检查官方 Lark CLI；缺失时才安装，未登录时才继续配置和 OAuth 授权。"
   warn "授权范围以飞书官方页面展示为准，本项目不会读取或保存飞书凭据。"
 
   doctor_cmd
-  install_cmd
+
+  if has_cmd lark-cli; then
+    section "安装 Lark CLI"
+    summary_item "lark-cli" "$(command -v lark-cli)"
+    _version="$(get_lark_cli_version | sed -n '1p')"
+    summary_item "version" "$_version"
+    summary_item "install" "已跳过；如需升级请执行 sh lark-cli.sh update"
+  else
+    install_cmd
+  fi
+
+  if lark_cli_auth_ok; then
+    section "登录状态"
+    lark-cli auth status
+    summary_item "auth" "ok，已跳过配置和登录"
+    return 0
+  fi
+
   config_cmd
   login_cmd
   status_cmd

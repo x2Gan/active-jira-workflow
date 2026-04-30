@@ -35,6 +35,8 @@ PROJECT_DIR="${PROJECT_DIR:-}"
 SKILL_REL_PATH_PROVIDED="${SKILL_REL_PATH+x}"
 SKILL_REL_PATH="${SKILL_REL_PATH:-active-jira}"
 SKILL_REL_PATHS="${SKILL_REL_PATHS:-}"
+DEFAULT_SKILL_REL_PATHS="${DEFAULT_SKILL_REL_PATHS:-active-jira active-jira-report active-lark}"
+LEGACY_DEFAULT_SKILL_REL_PATHS="${LEGACY_DEFAULT_SKILL_REL_PATHS:-active-jira active-jira-report}"
 
 # Where to install the local management command: active-jira update.
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
@@ -146,22 +148,132 @@ summary_item() {
   say "  - ${_label}: ${_value}"
 }
 
+normalize_skill_rel_paths() {
+  printf '%s\n' "$1" \
+    | tr '\n\t' '  ' \
+    | sed 's/[ ][ ]*/ /g;s/^ //;s/ $//'
+}
+
+default_skill_rel_paths() {
+  _paths=""
+
+  if [ -d "$PROJECT_DIR" ]; then
+    for _skill_rel_path in $DEFAULT_SKILL_REL_PATHS; do
+      _skill_file="$PROJECT_DIR/$_skill_rel_path/SKILL.md"
+      [ -f "$_skill_file" ] || continue
+
+      case " $_paths " in
+        *" $_skill_rel_path "*)
+          ;;
+        *)
+          if [ -n "$_paths" ]; then
+            _paths="$_paths $_skill_rel_path"
+          else
+            _paths="$_skill_rel_path"
+          fi
+          ;;
+      esac
+    done
+
+    for _skill_file in "$PROJECT_DIR"/*/SKILL.md; do
+      [ -f "$_skill_file" ] || continue
+
+      _skill_dir="${_skill_file%/SKILL.md}"
+      _skill_rel_path="${_skill_dir##*/}"
+
+      case " $_paths " in
+        *" $_skill_rel_path "*)
+          ;;
+        *)
+          if [ -n "$_paths" ]; then
+            _paths="$_paths $_skill_rel_path"
+          else
+            _paths="$_skill_rel_path"
+          fi
+          ;;
+      esac
+    done
+  fi
+
+  if [ -z "$_paths" ]; then
+    _paths="$DEFAULT_SKILL_REL_PATHS"
+  fi
+
+  normalize_skill_rel_paths "$_paths"
+}
+
+is_legacy_default_skill_rel_paths() {
+  _value="$(normalize_skill_rel_paths "$1")"
+  _legacy="$(normalize_skill_rel_paths "$LEGACY_DEFAULT_SKILL_REL_PATHS")"
+
+  [ "$_value" = "$_legacy" ]
+}
+
+should_preserve_skill_rel_paths_in_launcher() {
+  [ -n "$SKILL_REL_PATHS" ] || return 1
+
+  _value="$(normalize_skill_rel_paths "$SKILL_REL_PATHS")"
+  _default="$(default_skill_rel_paths)"
+
+  if [ "$_value" = "$_default" ]; then
+    return 1
+  fi
+
+  if is_legacy_default_skill_rel_paths "$_value"; then
+    return 1
+  fi
+
+  return 0
+}
+
+should_preserve_skill_rel_path_in_launcher() {
+  [ -n "$SKILL_REL_PATH_PROVIDED" ] || return 1
+
+  if [ -n "$SKILL_REL_PATHS" ] && ! should_preserve_skill_rel_paths_in_launcher; then
+    return 1
+  fi
+
+  _value="$(normalize_skill_rel_paths "$SKILL_REL_PATH")"
+
+  [ -n "$_value" ]
+}
+
 skill_rel_paths_value() {
+  _default_paths="$(default_skill_rel_paths)"
+
   if [ -n "$SKILL_REL_PATHS" ]; then
-    printf '%s\n' "$SKILL_REL_PATHS"
+    _skill_paths="$(normalize_skill_rel_paths "$SKILL_REL_PATHS")"
+    if is_legacy_default_skill_rel_paths "$_skill_paths"; then
+      printf '%s\n' "$_default_paths"
+    else
+      printf '%s\n' "$_skill_paths"
+    fi
     return 0
   fi
 
   if [ -n "$SKILL_REL_PATH_PROVIDED" ]; then
-    printf '%s\n' "$SKILL_REL_PATH"
+    normalize_skill_rel_paths "$SKILL_REL_PATH"
     return 0
   fi
 
-  printf '%s\n' "active-jira active-jira-report active-lark"
+  printf '%s\n' "$_default_paths"
 }
 
 skill_rel_paths_display() {
   printf '%s\n' "$(skill_rel_paths_value)" | tr ' ' ',' | sed 's/,/, /g'
+}
+
+skill_rel_paths_contains() {
+  _needle="$1"
+
+  for _contains_skill_rel_path in $(skill_rel_paths_value); do
+    _contains_skill_name="$(basename "$_contains_skill_rel_path")"
+    if [ "$_contains_skill_rel_path" = "$_needle" ] || [ "$_contains_skill_name" = "$_needle" ]; then
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 append_summary_csv() {
@@ -847,6 +959,53 @@ create_one_skill_symlink() {
   SUMMARY_SKILL_SOURCE="$(append_summary_csv "$SUMMARY_SKILL_SOURCE" "$_skill_src")"
 }
 
+skill_install_status() {
+  _skill_install_dir="$(expand_user_path "$1")"
+  _skill_rel_path="$2"
+  _skill_src="$PROJECT_DIR/$_skill_rel_path"
+  _skill_name="$(basename "$_skill_rel_path")"
+  _skill_target="$_skill_install_dir/$_skill_name"
+
+  if [ ! -d "$_skill_src" ]; then
+    printf '%s\n' "源目录缺失"
+    return 0
+  fi
+
+  if [ -L "$_skill_target" ]; then
+    _current_link="$(readlink "$_skill_target" 2>/dev/null || true)"
+
+    if [ "$_current_link" = "$_skill_src" ]; then
+      printf '%s\n' "已安装"
+    else
+      printf '%s\n' "已安装其他来源，将替换: $_current_link"
+    fi
+    return 0
+  fi
+
+  if [ -e "$_skill_target" ]; then
+    printf '%s\n' "目标已存在且不是软链接，将备份"
+    return 0
+  fi
+
+  printf '%s\n' "未安装"
+}
+
+print_supported_skills_status() {
+  _skill_install_dir="$(expand_user_path "$1")"
+
+  detail "当前支持的 Skills："
+  for _skill_rel_path in $(default_skill_rel_paths); do
+    _skill_name="$(basename "$_skill_rel_path")"
+    _status="$(skill_install_status "$_skill_install_dir" "$_skill_rel_path")"
+    if skill_rel_paths_contains "$_skill_rel_path"; then
+      _selection="本次安装"
+    else
+      _selection="未选择"
+    fi
+    detail "  - $_skill_name: $_status；$_selection"
+  done
+}
+
 create_skill_symlinks() {
   _skill_install_dir="$1"
 
@@ -1054,14 +1213,24 @@ install_launcher() {
     printf 'RAW_BASE_URL=%s\n' "$(shell_quote "$RAW_BASE_URL")"
     printf 'REPO_DIR_NAME=%s\n' "$(shell_quote "$REPO_DIR_NAME")"
     printf 'PROJECT_VERSION_FILE=%s\n' "$(shell_quote "$PROJECT_VERSION_FILE")"
-    printf 'SKILL_REL_PATH=%s\n' "$(shell_quote "$SKILL_REL_PATH")"
-    printf 'SKILL_REL_PATHS=%s\n' "$(shell_quote "$(skill_rel_paths_value)")"
+    if should_preserve_skill_rel_path_in_launcher; then
+      printf 'SKILL_REL_PATH=%s\n' "$(shell_quote "$SKILL_REL_PATH")"
+      printf '%s\n' 'export SKILL_REL_PATH'
+    else
+      printf '%s\n' 'unset SKILL_REL_PATH'
+    fi
+    if should_preserve_skill_rel_paths_in_launcher; then
+      printf 'SKILL_REL_PATHS=%s\n' "$(shell_quote "$(normalize_skill_rel_paths "$SKILL_REL_PATHS")")"
+      printf '%s\n' 'export SKILL_REL_PATHS'
+    else
+      printf '%s\n' 'unset SKILL_REL_PATHS'
+    fi
     printf 'JIRA_CLI_REPO=%s\n' "$(shell_quote "$JIRA_CLI_REPO")"
     printf 'JIRA_CLI_LATEST_URL=%s\n' "$(shell_quote "$JIRA_CLI_LATEST_URL")"
     printf 'JIRA_CLI_SCRIPT_REL_PATH=%s\n' "$(shell_quote "$JIRA_CLI_SCRIPT_REL_PATH")"
     printf 'JIRA_CLI_INSTALL_URL=%s\n' "$(shell_quote "$JIRA_CLI_INSTALL_URL")"
     printf 'LARK_CLI_SCRIPT_REL_PATH=%s\n' "$(shell_quote "$LARK_CLI_SCRIPT_REL_PATH")"
-    printf 'export APP_NAME INSTALLER_VERSION PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL REPO_DIR_NAME PROJECT_VERSION_FILE SKILL_REL_PATH SKILL_REL_PATHS JIRA_CLI_REPO JIRA_CLI_LATEST_URL JIRA_CLI_SCRIPT_REL_PATH JIRA_CLI_INSTALL_URL LARK_CLI_SCRIPT_REL_PATH\n'
+    printf 'export APP_NAME INSTALLER_VERSION PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL REPO_DIR_NAME PROJECT_VERSION_FILE JIRA_CLI_REPO JIRA_CLI_LATEST_URL JIRA_CLI_SCRIPT_REL_PATH JIRA_CLI_INSTALL_URL LARK_CLI_SCRIPT_REL_PATH\n'
     printf 'exec sh %s "$@"\n' "$(shell_quote "$PROJECT_DIR/install.sh")"
   } > "$_launcher"
 
@@ -1249,9 +1418,9 @@ should_install_lark_cli() {
 
   blank
   say "可选安装 Lark CLI"
-  say "本项目可以通过 Lark CLI 将生成的 Jira Markdown 报告发布为飞书云文档，"
-  say "并在后续发送给指定用户或群。该步骤需要安装官方飞书 CLI，"
-  say "并可能要求你在浏览器中完成飞书授权。"
+  say "本次安装包含 active-lark Skill，但当前未检测到官方 Lark CLI。"
+  say "安装后可将 Jira Markdown 报告发布为飞书云文档，并在后续发送给指定用户或群。"
+  say "该步骤可能要求你在浏览器中完成飞书授权。"
   summary_item "当前状态" "$SUMMARY_LARK_CLI"
 
   printf '? 是否现在安装并配置 Lark CLI？[y/N]: ' >&2
@@ -1270,6 +1439,29 @@ should_install_lark_cli() {
 run_lark_cli_setup() {
   section "可选步骤：Lark CLI"
   SUMMARY_LARK_CLI="$(get_lark_cli_status_summary)"
+
+  if ! skill_rel_paths_contains "active-lark"; then
+    detail "本次未安装 active-lark Skill，跳过 Lark CLI 接入。"
+    SUMMARY_LARK_CLI_INSTALL="已跳过（未安装 active-lark）"
+    return 0
+  fi
+
+  if has_cmd lark-cli; then
+    _lark_cli_path="$(command -v lark-cli)"
+    detail "已检测到 Lark CLI：$_lark_cli_path"
+
+    if lark-cli auth status >/dev/null 2>&1; then
+      detail "Lark CLI 已安装且登录状态正常，跳过安装流程。"
+      SUMMARY_LARK_CLI_INSTALL="已存在，跳过安装（auth ok）"
+    else
+      warn "Lark CLI 已安装，跳过安装流程；当前可能尚未登录或授权已失效。"
+      warn "如需授权，请执行：sh $PROJECT_DIR/$LARK_CLI_SCRIPT_REL_PATH login"
+      SUMMARY_LARK_CLI_INSTALL="已存在，跳过安装（需登录）"
+    fi
+
+    SUMMARY_LARK_CLI="$(get_lark_cli_status_summary)"
+    return 0
+  fi
 
   if ! should_install_lark_cli; then
     detail "已跳过 Lark CLI 接入。"
@@ -1336,6 +1528,7 @@ install_flow() {
 
   step_start 4 5 "安装 Agent Skill"
   resolve_install_config
+  print_supported_skills_status "$_skill_install_path"
   create_skill_symlinks "$_skill_install_path"
   step_done
 
@@ -1349,6 +1542,7 @@ install_flow() {
 
 run_skill_install_steps() {
   resolve_install_config
+  print_supported_skills_status "$_skill_install_path"
   create_skill_symlinks "$_skill_install_path"
   install_launcher
 }
@@ -1362,6 +1556,7 @@ install_skills_flow() {
 
   step_start 2 3 "安装 Agent Skill"
   resolve_install_config
+  print_supported_skills_status "$_skill_install_path"
   create_skill_symlinks "$_skill_install_path"
   step_done
 

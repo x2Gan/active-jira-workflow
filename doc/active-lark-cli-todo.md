@@ -113,6 +113,7 @@ sh lark-cli.sh help
 - [x] `npx` 是否存在。
 - [x] `lark-cli` 是否存在。
 - [x] npm prefix 和全局 bin 目录。
+- [x] npm global root 写权限。
 - [x] 全局 bin 是否在 `PATH`。
 - [x] 如果 `lark-cli` 存在，尝试获取版本。
 - [x] 如果 `lark-cli` 存在，尝试执行 `lark-cli auth status`，失败不导致 `doctor` 整体退出。
@@ -121,6 +122,7 @@ sh lark-cli.sh help
 
 - [x] `get_npm_prefix`
 - [x] `get_npm_global_bin`
+- [x] `get_npm_global_root`
 - [x] `is_path_contains`
 - [x] `get_lark_cli_version`
 - [x] `print_path_hint`
@@ -144,6 +146,9 @@ sh lark-cli.sh doctor
 执行步骤：
 
 - [x] 检查 `node/npm/npx`。
+- [x] 安装前检测 npm 全局目录写权限；需要时触发 `sudo`。
+- [x] 用户拒绝 `sudo` 后询问是否安装到 fallback 路径。
+- [x] 用户拒绝 fallback 后结束安装流程。
 - [x] 执行 `npm install -g @larksuite/cli`。
 - [x] 执行 `npx -y skills add https://open.feishu.cn --skill -y`。
 - [x] 检查 `lark-cli` 是否可用。
@@ -161,6 +166,7 @@ sh lark-cli.sh status
 - [x] `LARK_CLI_NPM_PACKAGE="${LARK_CLI_NPM_PACKAGE:-@larksuite/cli}"`
 - [x] `LARK_CLI_SKILL_SOURCE="${LARK_CLI_SKILL_SOURCE:-https://open.feishu.cn}"`
 - [x] `LARK_CLI_SKIP_SKILL="${LARK_CLI_SKIP_SKILL:-0}"`
+- [x] `LARK_CLI_NPM_FALLBACK_PREFIX="${LARK_CLI_NPM_FALLBACK_PREFIX:-$HOME/.local/npm}"`
 
 验收：
 
@@ -567,7 +573,7 @@ sh lark-cli.sh bootstrap
 
 | 风险 | 影响 | 缓解 |
 | --- | --- | --- |
-| npm 全局安装权限不足 | 无法安装 CLI | 输出 nvm/volta/user prefix 建议，不自动 sudo |
+| npm 全局安装权限不足 | 无法安装 CLI | 安装前检测写权限；交互触发 sudo；拒绝后询问 fallback prefix |
 | `lark-cli` 安装后 PATH 不可见 | 用户以为安装失败 | 检测 npm global bin 并输出 export PATH |
 | OAuth 需要浏览器确认 | 无法完全自动化 | 在提示中明确说明，bootstrap 允许中断后重试 |
 | 官方 CLI 命令变化 | 脚本失效 | 将命令集中在 `lark-cli.sh`，主安装器只调用脚本 |

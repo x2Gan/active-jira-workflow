@@ -217,7 +217,8 @@ sh lark-cli.sh update
 常见问题：
 
 - 缺少 Node.js、npm 或 npx：先安装 Node.js LTS，再执行 `sh lark-cli.sh doctor`。
-- `npm install -g` 权限不足：建议使用 nvm/volta 或配置用户级 npm prefix。
+- `npm install -g` 权限不足：安装器会先检测 npm 全局目录是否可写；不可写时在交互终端触发 `sudo` 密码提示。若你拒绝 sudo，安装器会继续询问是否改装到用户级 fallback 路径，默认是 `~/.local/npm`。
+- 使用 fallback 路径后找不到 `lark-cli`：把 `export PATH="$HOME/.local/npm/bin:$PATH"` 加入 `~/.zshrc` 或 `~/.bashrc`，然后重新打开终端。
 - 安装后找不到 `lark-cli`：执行 `sh lark-cli.sh doctor`，按提示把 npm 全局 bin 目录加入 `PATH`。
 - OAuth 授权码过期或授权中断：重新执行 `sh lark-cli.sh login`。
 - 权限不足：按飞书官方授权页面补充应用或用户权限后，重新执行 `sh lark-cli.sh login`。

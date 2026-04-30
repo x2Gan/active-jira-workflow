@@ -347,7 +347,7 @@ active-jira-report
 | --- | --- |
 | 缺少 Node.js | 提示安装 Node.js LTS，并停止安装 |
 | 缺少 npm/npx | 提示修复 Node.js/npm 环境 |
-| npm 全局安装权限不足 | 提示配置用户级 npm prefix、使用 nvm/volta，或由用户自行处理权限 |
+| npm 全局安装权限不足 | 安装前检测 npm global root 是否可写；不可写时交互触发 `sudo`，用户拒绝后询问是否安装到用户级 fallback prefix |
 | npm 安装成功但找不到 `lark-cli` | 检查 npm 全局 bin 目录是否在 `PATH` 中，并输出 PATH 修复提示 |
 | Skill 安装失败 | 保留 CLI 安装结果，提示用户重试 `npx -y skills add https://open.feishu.cn --skill -y` |
 | `config init` 中断 | 提示可稍后执行 `./lark-cli.sh config` |

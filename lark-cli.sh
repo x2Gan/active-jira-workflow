@@ -11,6 +11,10 @@ set -eu
 LARK_CLI_NPM_PACKAGE="${LARK_CLI_NPM_PACKAGE:-@larksuite/cli}"
 LARK_CLI_SKILL_SOURCE="${LARK_CLI_SKILL_SOURCE:-https://open.feishu.cn}"
 LARK_CLI_SKIP_SKILL="${LARK_CLI_SKIP_SKILL:-0}"
+LARK_CLI_NPM_FALLBACK_PREFIX="${LARK_CLI_NPM_FALLBACK_PREFIX:-$HOME/.local/npm}"
+
+NPM_INSTALL_MODE="global"
+NPM_INSTALL_PREFIX=""
 
 say() {
   printf '%s\n' "$*"
@@ -77,6 +81,7 @@ Environment:
   LARK_CLI_NPM_PACKAGE       npm 包名，默认：${LARK_CLI_NPM_PACKAGE}
   LARK_CLI_SKILL_SOURCE      CLI Skill 来源，默认：${LARK_CLI_SKILL_SOURCE}
   LARK_CLI_SKIP_SKILL        设为 1/true 时跳过 Skill 安装，默认：0
+  LARK_CLI_NPM_FALLBACK_PREFIX npm 全局目录无权限时的用户级安装目录，默认：${LARK_CLI_NPM_FALLBACK_PREFIX}
 
 Official flow:
   npm install -g @larksuite/cli
@@ -98,6 +103,81 @@ get_npm_global_bin() {
   if [ -n "$_prefix" ] && [ "$_prefix" != "undefined" ]; then
     printf '%s\n' "${_prefix%/}/bin"
   fi
+}
+
+get_npm_global_root() {
+  if has_cmd npm; then
+    npm root -g 2>/dev/null || true
+  fi
+}
+
+expand_user_path() {
+  _path="$1"
+
+  case "$_path" in
+    "~")
+      printf '%s\n' "$HOME"
+      ;;
+    "~/"*)
+      printf '%s\n' "$HOME/${_path#~/}"
+      ;;
+    *)
+      printf '%s\n' "$_path"
+      ;;
+  esac
+}
+
+path_write_target() {
+  _path="$1"
+
+  if [ -d "$_path" ]; then
+    printf '%s\n' "$_path"
+    return 0
+  fi
+
+  dirname "$_path"
+}
+
+is_npm_global_writable() {
+  _root="$(get_npm_global_root)"
+  [ -n "$_root" ] || return 1
+
+  _target="$(path_write_target "$_root")"
+  [ -d "$_target" ] && [ -w "$_target" ]
+}
+
+prompt_yes_no() {
+  _prompt="$1"
+  _default="${2:-n}"
+
+  if [ ! -t 0 ]; then
+    return 1
+  fi
+
+  while :; do
+    if [ "$_default" = "y" ]; then
+      printf '? %s [Y/n]: ' "$_prompt" >&2
+    else
+      printf '? %s [y/N]: ' "$_prompt" >&2
+    fi
+
+    IFS= read -r _answer || true
+    if [ -z "$_answer" ]; then
+      _answer="$_default"
+    fi
+
+    case "$(printf '%s\n' "$_answer" | tr '[:upper:]' '[:lower:]')" in
+      y|yes)
+        return 0
+        ;;
+      n|no)
+        return 1
+        ;;
+      *)
+        warn "请输入 y 或 n。"
+        ;;
+    esac
+  done
 }
 
 is_path_contains() {
@@ -129,6 +209,83 @@ print_path_hint() {
 
   warn "如果安装后找不到 lark-cli，请把 npm 全局 bin 目录加入 PATH："
   warn "  export PATH=\"$_bin:\$PATH\""
+}
+
+print_fallback_path_hint() {
+  _prefix="$(expand_user_path "$LARK_CLI_NPM_FALLBACK_PREFIX")"
+  _bin="${_prefix%/}/bin"
+
+  warn "用户级 npm bin 目录为：$_bin"
+  if is_path_contains "$_bin"; then
+    warn "该目录已在当前 PATH 中。"
+  else
+    warn "安装完成后请把下面这行加入 ~/.zshrc 或 ~/.bashrc："
+    warn "  export PATH=\"$_bin:\$PATH\""
+  fi
+}
+
+prepare_npm_install_permission() {
+  NPM_INSTALL_MODE="global"
+  NPM_INSTALL_PREFIX=""
+
+  _prefix="$(get_npm_prefix)"
+  _root="$(get_npm_global_root)"
+  summary_item "npm prefix" "$_prefix"
+  summary_item "npm global root" "$_root"
+
+  if is_npm_global_writable; then
+    summary_item "npm global writable" "yes"
+    return 0
+  fi
+
+  summary_item "npm global writable" "no"
+  warn "当前用户没有权限写入 npm 全局目录：${_root:-unknown}"
+
+  if has_cmd sudo && [ -t 0 ]; then
+    warn "将尝试通过 sudo 获取一次安装权限；sudo 会直接提示你输入系统密码。"
+    if sudo -v; then
+      NPM_INSTALL_MODE="sudo"
+      summary_item "npm install mode" "sudo"
+      return 0
+    fi
+
+    warn "sudo 授权未完成或被拒绝。"
+  elif ! has_cmd sudo; then
+    warn "当前环境没有 sudo 命令。"
+  else
+    warn "当前不是交互式终端，无法请求 sudo 密码。"
+  fi
+
+  _fallback_prefix="$(expand_user_path "$LARK_CLI_NPM_FALLBACK_PREFIX")"
+  if prompt_yes_no "是否改为安装到用户级 fallback 路径 $_fallback_prefix？" "y"; then
+    mkdir -p "${_fallback_prefix%/}/bin"
+    NPM_INSTALL_MODE="user"
+    NPM_INSTALL_PREFIX="$_fallback_prefix"
+    PATH="${_fallback_prefix%/}/bin:$PATH"
+    export PATH
+    summary_item "npm install mode" "user prefix: $_fallback_prefix"
+    print_fallback_path_hint
+    return 0
+  fi
+
+  warn "未获得 sudo 权限，也未选择 fallback 路径，结束 Lark CLI 安装流程。"
+  return 1
+}
+
+run_npm_global_install() {
+  _package="$1"
+
+  case "$NPM_INSTALL_MODE" in
+    sudo)
+      sudo npm install -g "$_package"
+      ;;
+    user)
+      npm install -g --prefix "$NPM_INSTALL_PREFIX" "$_package"
+      ;;
+    *)
+      npm install -g "$_package"
+      ;;
+  esac
 }
 
 get_lark_cli_version() {
@@ -183,6 +340,12 @@ doctor_cmd() {
   if has_cmd npm; then
     summary_item "npm" "$(npm -v 2>/dev/null || true)"
     summary_item "npm prefix" "$(get_npm_prefix)"
+    summary_item "npm global root" "$(get_npm_global_root)"
+    if is_npm_global_writable; then
+      summary_item "npm global writable" "yes"
+    else
+      summary_item "npm global writable" "no"
+    fi
     _npm_bin="$(get_npm_global_bin)"
     summary_item "npm global bin" "$_npm_bin"
     if [ -n "$_npm_bin" ]; then
@@ -242,9 +405,10 @@ install_cmd() {
   summary_item "Node.js" "$(node -v 2>/dev/null || true)"
   summary_item "npm" "$(npm -v 2>/dev/null || true)"
   summary_item "npx" "$(command -v npx)"
+  prepare_npm_install_permission || return 1
 
   section "安装 Lark CLI"
-  npm install -g "$LARK_CLI_NPM_PACKAGE"
+  run_npm_global_install "$LARK_CLI_NPM_PACKAGE"
 
   _skill_status="installed"
   install_skill || _skill_status="failed or skipped"
@@ -318,6 +482,7 @@ update_cmd() {
   section "检查基础环境"
   need_cmd npm
   need_cmd npx
+  prepare_npm_install_permission || return 1
 
   _before=""
   if has_cmd lark-cli; then
@@ -328,7 +493,7 @@ update_cmd() {
   summary_item "latest" "$_latest"
 
   section "升级 Lark CLI"
-  npm install -g "${LARK_CLI_NPM_PACKAGE}@latest"
+  run_npm_global_install "${LARK_CLI_NPM_PACKAGE}@latest"
 
   _skill_status="installed"
   install_skill || _skill_status="failed or skipped"

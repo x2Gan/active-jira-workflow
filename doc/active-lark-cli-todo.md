@@ -45,9 +45,9 @@ lark-cli auth status
 
 ### P0.2 确认当前仓库状态
 
-- [ ] 确认 `install.sh` 当前职责仍是 Active Jira 工作流安装器。
-- [ ] 确认 `lark-cli.sh` 是独立入口，不被 Jira 初始化逻辑污染。
-- [ ] 确认未跟踪或用户修改文件不会被覆盖。
+- [x] 确认 `install.sh` 当前职责仍是 Active Jira 工作流安装器。
+- [x] 确认 `lark-cli.sh` 是独立入口，不被 Jira 初始化逻辑污染。
+- [x] 确认未跟踪或用户修改文件不会被覆盖。
 
 验收：
 
@@ -57,8 +57,8 @@ git status --short
 
 需要确认：
 
-- [ ] 本次只改动目标文件。
-- [ ] 不回滚用户已有改动。
+- [x] 本次只改动目标文件。
+- [x] 不回滚用户已有改动。
 
 ## 4. P1 `lark-cli.sh` 最小可用版本
 
@@ -68,30 +68,30 @@ git status --short
 
 文件：`lark-cli.sh`
 
-- [ ] 添加 shebang 和严格模式：
+- [x] 添加 shebang 和严格模式：
 
 ```sh
 #!/usr/bin/env sh
 set -eu
 ```
 
-- [ ] 添加基础 helper：
-  - [ ] `say`
-  - [ ] `warn`
-  - [ ] `die`
-  - [ ] `has_cmd`
-  - [ ] `need_cmd`
-  - [ ] `section`
-  - [ ] `summary_item`
-  - [ ] `is_disabled`
-- [ ] 添加 `usage`。
-- [ ] 添加命令分发：
-  - [ ] `help`
-  - [ ] `doctor`
-  - [ ] `install`
-  - [ ] `status`
-  - [ ] `update`
-  - [ ] 预留 `config/login/bootstrap`
+- [x] 添加基础 helper：
+  - [x] `say`
+  - [x] `warn`
+  - [x] `die`
+  - [x] `has_cmd`
+  - [x] `need_cmd`
+  - [x] `section`
+  - [x] `summary_item`
+  - [x] `is_disabled`
+- [x] 添加 `usage`。
+- [x] 添加命令分发：
+  - [x] `help`
+  - [x] `doctor`
+  - [x] `install`
+  - [x] `status`
+  - [x] `update`
+  - [x] 预留 `config/login/bootstrap`
 
 验收：
 
@@ -106,24 +106,24 @@ sh lark-cli.sh help
 
 检查项：
 
-- [ ] `node` 是否存在。
-- [ ] `node -v`。
-- [ ] `npm` 是否存在。
-- [ ] `npm -v`。
-- [ ] `npx` 是否存在。
-- [ ] `lark-cli` 是否存在。
-- [ ] npm prefix 和全局 bin 目录。
-- [ ] 全局 bin 是否在 `PATH`。
-- [ ] 如果 `lark-cli` 存在，尝试获取版本。
-- [ ] 如果 `lark-cli` 存在，尝试执行 `lark-cli auth status`，失败不导致 `doctor` 整体退出。
+- [x] `node` 是否存在。
+- [x] `node -v`。
+- [x] `npm` 是否存在。
+- [x] `npm -v`。
+- [x] `npx` 是否存在。
+- [x] `lark-cli` 是否存在。
+- [x] npm prefix 和全局 bin 目录。
+- [x] 全局 bin 是否在 `PATH`。
+- [x] 如果 `lark-cli` 存在，尝试获取版本。
+- [x] 如果 `lark-cli` 存在，尝试执行 `lark-cli auth status`，失败不导致 `doctor` 整体退出。
 
 建议实现函数：
 
-- [ ] `get_npm_prefix`
-- [ ] `get_npm_global_bin`
-- [ ] `is_path_contains`
-- [ ] `get_lark_cli_version`
-- [ ] `print_path_hint`
+- [x] `get_npm_prefix`
+- [x] `get_npm_global_bin`
+- [x] `is_path_contains`
+- [x] `get_lark_cli_version`
+- [x] `print_path_hint`
 
 验收：
 
@@ -133,9 +133,9 @@ sh lark-cli.sh doctor
 
 预期：
 
-- [ ] 缺少 `lark-cli` 时能明确显示 `not installed`。
-- [ ] 不会因为未登录而失败退出。
-- [ ] PATH 问题有可复制的修复提示。
+- [x] 缺少 `lark-cli` 时能明确显示 `not installed`。
+- [x] 不会因为未登录而失败退出。
+- [x] PATH 问题有可复制的修复提示。
 
 ### P1.3 实现安装命令
 
@@ -143,12 +143,12 @@ sh lark-cli.sh doctor
 
 执行步骤：
 
-- [ ] 检查 `node/npm/npx`。
-- [ ] 执行 `npm install -g @larksuite/cli`。
-- [ ] 执行 `npx -y skills add https://open.feishu.cn --skill -y`。
-- [ ] 检查 `lark-cli` 是否可用。
-- [ ] 如果不可用，输出 npm global bin 的 PATH 修复提示。
-- [ ] 安装完成后提示后续命令：
+- [x] 检查 `node/npm/npx`。
+- [x] 执行 `npm install -g @larksuite/cli`。
+- [x] 执行 `npx -y skills add https://open.feishu.cn --skill -y`。
+- [x] 检查 `lark-cli` 是否可用。
+- [x] 如果不可用，输出 npm global bin 的 PATH 修复提示。
+- [x] 安装完成后提示后续命令：
 
 ```sh
 sh lark-cli.sh config
@@ -158,9 +158,9 @@ sh lark-cli.sh status
 
 环境变量建议：
 
-- [ ] `LARK_CLI_NPM_PACKAGE="${LARK_CLI_NPM_PACKAGE:-@larksuite/cli}"`
-- [ ] `LARK_CLI_SKILL_SOURCE="${LARK_CLI_SKILL_SOURCE:-https://open.feishu.cn}"`
-- [ ] `LARK_CLI_SKIP_SKILL="${LARK_CLI_SKIP_SKILL:-0}"`
+- [x] `LARK_CLI_NPM_PACKAGE="${LARK_CLI_NPM_PACKAGE:-@larksuite/cli}"`
+- [x] `LARK_CLI_SKILL_SOURCE="${LARK_CLI_SKILL_SOURCE:-https://open.feishu.cn}"`
+- [x] `LARK_CLI_SKIP_SKILL="${LARK_CLI_SKIP_SKILL:-0}"`
 
 验收：
 
@@ -172,9 +172,9 @@ lark-cli auth status
 
 注意：
 
-- [ ] `install` 不执行 `config init`。
-- [ ] `install` 不执行 `auth login`。
-- [ ] `install` 可重复执行。
+- [x] `install` 不执行 `config init`。
+- [x] `install` 不执行 `auth login`。
+- [x] `install` 可重复执行。
 
 ### P1.4 实现状态命令
 
@@ -182,10 +182,10 @@ lark-cli auth status
 
 行为：
 
-- [ ] 如果没有 `lark-cli`，提示执行 `sh lark-cli.sh install` 并返回非零。
-- [ ] 如果有 `lark-cli`，执行 `lark-cli auth status`。
-- [ ] 原样展示 CLI 的状态输出。
-- [ ] 如果未登录，提示执行 `sh lark-cli.sh login`。
+- [x] 如果没有 `lark-cli`，提示执行 `sh lark-cli.sh install` 并返回非零。
+- [x] 如果有 `lark-cli`，执行 `lark-cli auth status`。
+- [x] 原样展示 CLI 的状态输出。
+- [x] 如果未登录，提示执行 `sh lark-cli.sh login`。
 
 验收：
 
@@ -199,21 +199,21 @@ sh lark-cli.sh status
 
 执行步骤：
 
-- [ ] 查询本地版本。
-- [ ] 查询 npm 最新版本：
+- [x] 查询本地版本。
+- [x] 查询 npm 最新版本：
 
 ```sh
 npm view @larksuite/cli version
 ```
 
-- [ ] 执行：
+- [x] 执行：
 
 ```sh
 npm install -g @larksuite/cli@latest
 npx -y skills add https://open.feishu.cn --skill -y
 ```
 
-- [ ] 更新后打印版本和状态。
+- [x] 更新后打印版本和状态。
 
 验收：
 
@@ -238,10 +238,10 @@ lark-cli config init --new
 
 任务：
 
-- [ ] 执行前检查 `lark-cli`。
-- [ ] 清楚提示用户该步骤会打开浏览器或输出链接。
-- [ ] 明确本项目不保存 App Secret 或 token。
-- [ ] 命令失败时提示可重试。
+- [x] 执行前检查 `lark-cli`。
+- [x] 清楚提示用户该步骤会打开浏览器或输出链接。
+- [x] 明确本项目不保存 App Secret 或 token。
+- [x] 命令失败时提示可重试。
 
 验收：
 
@@ -261,10 +261,10 @@ lark-cli auth login --recommend
 
 任务：
 
-- [ ] 执行前检查 `lark-cli`。
-- [ ] 清楚提示用户会进入 OAuth 授权。
-- [ ] 登录完成后自动执行 `lark-cli auth status`。
-- [ ] 登录失败时提示重新执行。
+- [x] 执行前检查 `lark-cli`。
+- [x] 清楚提示用户会进入 OAuth 授权。
+- [x] 登录完成后自动执行 `lark-cli auth status`。
+- [x] 登录失败时提示重新执行。
 
 验收：
 
@@ -279,17 +279,17 @@ sh lark-cli.sh status
 
 流程：
 
-1. [ ] 执行 `doctor`。
-2. [ ] 执行 `install`。
-3. [ ] 执行 `config`。
-4. [ ] 执行 `login`。
-5. [ ] 执行 `status`。
+1. [x] 执行 `doctor`。
+2. [x] 执行 `install`。
+3. [x] 执行 `config`。
+4. [x] 执行 `login`。
+5. [x] 执行 `status`。
 
 交互提示：
 
-- [ ] 开始前说明用途：用于将 Jira 报告生成飞书文档并后续发送给指定对象。
-- [ ] 说明中途需要用户浏览器确认。
-- [ ] 说明授权范围以飞书官方页面为准。
+- [x] 开始前说明用途：用于将 Jira 报告生成飞书文档并后续发送给指定对象。
+- [x] 说明中途需要用户浏览器确认。
+- [x] 说明授权范围以飞书官方页面为准。
 
 验收：
 
@@ -322,16 +322,16 @@ SUMMARY_LARK_CLI_INSTALL=""
 
 验收：
 
-- [ ] `install.sh help` 中说明这些变量。
-- [ ] launcher 生成时保留相关变量，或明确不需要保留。
+- [x] `install.sh help` 中说明这些变量。
+- [x] launcher 生成时保留相关变量，或明确不需要保留。
 
 ### P3.2 实现 Lark CLI 状态检查函数
 
 建议函数：
 
-- [ ] `get_lark_cli_status_summary`
-- [ ] `should_install_lark_cli`
-- [ ] `run_lark_cli_setup`
+- [x] `get_lark_cli_status_summary`
+- [x] `should_install_lark_cli`
+- [x] `run_lark_cli_setup`
 
 状态摘要建议：
 
@@ -343,9 +343,9 @@ SUMMARY_LARK_CLI_INSTALL=""
 
 验收：
 
-- [ ] 没有 `lark-cli` 时提示缺失。
-- [ ] 有 `lark-cli` 但未登录时提示需要登录。
-- [ ] 状态检查不影响 Jira 安装主流程。
+- [x] 没有 `lark-cli` 时提示缺失。
+- [x] 有 `lark-cli` 但未登录时提示需要登录。
+- [x] 状态检查不影响 Jira 安装主流程。
 
 ### P3.3 增加交互询问
 
@@ -362,11 +362,11 @@ SUMMARY_LARK_CLI_INSTALL=""
 
 任务：
 
-- [ ] 默认答案为 `N`。
-- [ ] 非交互环境默认跳过。
-- [ ] `INSTALL_LARK_CLI=1` 时不询问，直接安装。
-- [ ] `INSTALL_LARK_CLI=0` 时不询问，直接跳过。
-- [ ] `INSTALL_LARK_CLI=prompt` 时只在 TTY 中询问。
+- [x] 默认答案为 `N`。
+- [x] 非交互环境默认跳过。
+- [x] `INSTALL_LARK_CLI=1` 时不询问，直接安装。
+- [x] `INSTALL_LARK_CLI=0` 时不询问，直接跳过。
+- [x] `INSTALL_LARK_CLI=prompt` 时只在 TTY 中询问。
 
 验收：
 
@@ -383,18 +383,18 @@ INSTALL_LARK_CLI=1 LARK_CLI_SETUP_MODE=install PROJECT_DIR="$(pwd)" sh install.s
 
 任务：
 
-- [ ] `install_flow` 的步骤总数根据是否跳过配置步骤合理显示。
-- [ ] 如果 Lark CLI 是可选步骤，可以显示为“可选步骤”而不是强行改成固定 `[6/6]`。
-- [ ] 安装总结中加入 Lark CLI 结果：
-  - [ ] `已跳过`
-  - [ ] `已安装`
-  - [ ] `已安装并登录`
-  - [ ] `安装失败`
+- [x] `install_flow` 的步骤总数根据是否跳过配置步骤合理显示。
+- [x] 如果 Lark CLI 是可选步骤，可以显示为“可选步骤”而不是强行改成固定 `[6/6]`。
+- [x] 安装总结中加入 Lark CLI 结果：
+  - [x] `已跳过`
+  - [x] `已安装`
+  - [x] `已安装并登录`
+  - [x] `安装失败`
 
 验收：
 
-- [ ] 不安装 Lark CLI 时总结清晰。
-- [ ] 安装失败时 Jira 安装结果仍能被理解。
+- [x] 不安装 Lark CLI 时总结清晰。
+- [x] 安装失败时 Jira 安装结果仍能被理解。
 
 ## 7. P4 文档与用户指引
 
@@ -404,28 +404,28 @@ INSTALL_LARK_CLI=1 LARK_CLI_SETUP_MODE=install PROJECT_DIR="$(pwd)" sh install.s
 
 新增内容：
 
-- [ ] Lark CLI 是可选能力。
-- [ ] 用途：将 Jira 报告发布为飞书云文档，并后续发送给指定对象。
-- [ ] 默认不会安装。
-- [ ] 主安装器启用方式：
+- [x] Lark CLI 是可选能力。
+- [x] 用途：将 Jira 报告发布为飞书云文档，并后续发送给指定对象。
+- [x] 默认不会安装。
+- [x] 主安装器启用方式：
 
 ```sh
 INSTALL_LARK_CLI=1 sh install.sh
 ```
 
-- [ ] 单独安装方式：
+- [x] 单独安装方式：
 
 ```sh
 sh lark-cli.sh bootstrap
 ```
 
-- [ ] 只安装不登录：
+- [x] 只安装不登录：
 
 ```sh
 sh lark-cli.sh install
 ```
 
-- [ ] 升级：
+- [x] 升级：
 
 ```sh
 sh lark-cli.sh update
@@ -435,18 +435,18 @@ sh lark-cli.sh update
 
 建议加入 README 或独立 doc：
 
-- [ ] 缺少 Node.js。
-- [ ] npm 全局安装权限不足。
-- [ ] `lark-cli` 安装后命令不存在。
-- [ ] OAuth 授权码过期。
-- [ ] 权限不足。
-- [ ] 非交互安装中跳过 Lark CLI 的原因。
+- [x] 缺少 Node.js。
+- [x] npm 全局安装权限不足。
+- [x] `lark-cli` 安装后命令不存在。
+- [x] OAuth 授权码过期。
+- [x] 权限不足。
+- [x] 非交互安装中跳过 Lark CLI 的原因。
 
 ### P4.3 更新设计文档状态
 
 文件：`doc/active-lark-cli-design.md`
 
-- [ ] 实现完成后同步实际命令和行为。
+- [x] 实现完成后同步实际命令和行为。
 - [ ] 如果官方 CLI 命令有变化，同步更新。
 
 ## 8. P5 报告发布能力预研与铺垫
@@ -579,14 +579,14 @@ sh lark-cli.sh bootstrap
 
 ### 必改
 
-- [ ] `lark-cli.sh`
-- [ ] `install.sh`
-- [ ] `doc/active-lark-cli-todo.md`
+- [x] `lark-cli.sh`
+- [x] `install.sh`
+- [x] `doc/active-lark-cli-todo.md`
 
 ### 建议改
 
-- [ ] `README.md`
-- [ ] `doc/active-lark-cli-design.md`
+- [x] `README.md`
+- [x] `doc/active-lark-cli-design.md`
 
 ### 后续可能新增
 
@@ -599,10 +599,10 @@ sh lark-cli.sh bootstrap
 
 完成：
 
-- [ ] `lark-cli.sh help`
-- [ ] `lark-cli.sh doctor`
+- [x] `lark-cli.sh help`
+- [x] `lark-cli.sh doctor`
 - [ ] `lark-cli.sh install`
-- [ ] `lark-cli.sh status`
+- [x] `lark-cli.sh status`
 - [ ] `lark-cli.sh update`
 
 ### M2: 官方完整流程可跑通
@@ -619,22 +619,21 @@ sh lark-cli.sh bootstrap
 
 - [ ] `INSTALL_LARK_CLI=0` 跳过。
 - [ ] `INSTALL_LARK_CLI=1 LARK_CLI_SETUP_MODE=install` 自动安装。
-- [ ] 交互默认不安装。
+- [x] 交互默认不安装。
 
 ### M4: 文档与验证
 
 完成：
 
-- [ ] README 更新。
-- [ ] 故障排查更新。
+- [x] README 更新。
+- [x] 故障排查更新。
 - [ ] Markdown 报告创建飞书文档验证通过。
 
 ## 13. 推荐下一步
 
-建议下一轮从 M1 开始实现：
+建议下一轮进入真实环境验收：
 
-1. 完成 `lark-cli.sh` 骨架。
-2. 实现 `doctor/install/status/update`。
-3. 本地跑 `sh -n lark-cli.sh` 和 `sh lark-cli.sh doctor`。
-
-这个顺序风险最低，也能尽快让仓库具备一个独立、可测试的飞书 CLI 管理入口。
+1. 执行 `sh lark-cli.sh install`，确认 npm 全局安装、Skill 安装和 PATH 表现。
+2. 执行 `sh lark-cli.sh config`、`sh lark-cli.sh login`、`sh lark-cli.sh status`，完成浏览器授权验证。
+3. 执行 `INSTALL_LARK_CLI=1 LARK_CLI_SETUP_MODE=install PROJECT_DIR="$(pwd)" sh install.sh skills`，确认主安装器可选入口。
+4. 验证 `lark-cli docs +create --api-version v2 --doc-format markdown` 能创建测试飞书文档。

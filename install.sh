@@ -69,6 +69,12 @@ INIT_JIRA_CLI="${INIT_JIRA_CLI:-1}"
 RUN_JIRA_INIT="${RUN_JIRA_INIT:-1}"
 INSTALL_JIRA_CLI="${INSTALL_JIRA_CLI:-1}"
 
+# Optional Lark CLI setup. Default is prompt in interactive sessions and skip in
+# non-interactive sessions.
+INSTALL_LARK_CLI="${INSTALL_LARK_CLI:-prompt}"
+LARK_CLI_SETUP_MODE="${LARK_CLI_SETUP_MODE:-bootstrap}"
+LARK_CLI_SCRIPT_REL_PATH="${LARK_CLI_SCRIPT_REL_PATH:-lark-cli.sh}"
+
 # Optional switch to skip skill/launcher setup after jira-cli initialization.
 SKIP_CONFIG_STEPS="${SKIP_CONFIG_STEPS:-${SKIP_POST_SOURCE_STEPS:-0}}"
 
@@ -81,6 +87,8 @@ SUMMARY_NETRC=""
 SUMMARY_SKILL_TARGET=""
 SUMMARY_SKILL_SOURCE=""
 SUMMARY_LAUNCHER=""
+SUMMARY_LARK_CLI=""
+SUMMARY_LARK_CLI_INSTALL=""
 SUMMARY_PATH_HINT=""
 
 say() {
@@ -222,6 +230,9 @@ Environment:
   INSTALL_JIRA_CLI        是否自动安装 jira-cli，默认：1；设为 0 跳过
   RUN_JIRA_INIT           兼容旧变量；设为 0 时跳过 jira-cli 初始化
   SKIP_CONFIG_STEPS       是否跳过 skill/launcher 配置，默认：0
+  INSTALL_LARK_CLI        是否安装 Lark CLI：prompt/1/0，默认：prompt
+  LARK_CLI_SETUP_MODE     Lark CLI 执行模式：bootstrap 或 install，默认：bootstrap
+  LARK_CLI_SCRIPT_REL_PATH 工程内 Lark CLI 脚本路径，默认：lark-cli.sh
   JIRA_CLI_LATEST_URL     jira-cli latest release URL，默认：GitHub releases/latest
   JIRA_CLI_INSTALL_URL    jira-cli 子安装脚本 raw URL
   JIRA_CLI_UPDATE_CMD     自定义 jira-cli 升级命令
@@ -598,6 +609,7 @@ print_install_plan() {
   summary_item "Jira 配置" "$_jira_init_plan"
   summary_item "Skill" "$_skill_plan"
   summary_item "本地命令" "$_launcher_plan"
+  summary_item "Lark CLI" "可选；INSTALL_LARK_CLI=${INSTALL_LARK_CLI}, LARK_CLI_SETUP_MODE=${LARK_CLI_SETUP_MODE}"
 
   blank
   say "安装流程："
@@ -616,6 +628,7 @@ print_skills_plan() {
   summary_item "源码目录" "$PROJECT_DIR"
   summary_item "Skill" "$(skill_rel_paths_display)"
   summary_item "本地命令" "$BIN_DIR/$APP_NAME"
+  summary_item "Lark CLI" "可选；INSTALL_LARK_CLI=${INSTALL_LARK_CLI}, LARK_CLI_SETUP_MODE=${LARK_CLI_SETUP_MODE}"
 }
 
 print_install_summary() {
@@ -631,6 +644,8 @@ print_install_summary() {
   summary_item "Skill 软链接" "$SUMMARY_SKILL_TARGET"
   summary_item "Skill 源目录" "$SUMMARY_SKILL_SOURCE"
   summary_item "本地命令" "$SUMMARY_LAUNCHER"
+  summary_item "Lark CLI 状态" "$SUMMARY_LARK_CLI"
+  summary_item "Lark CLI 接入" "$SUMMARY_LARK_CLI_INSTALL"
 
   if [ -n "$SUMMARY_PATH_HINT" ]; then
     blank
@@ -1045,7 +1060,8 @@ install_launcher() {
     printf 'JIRA_CLI_LATEST_URL=%s\n' "$(shell_quote "$JIRA_CLI_LATEST_URL")"
     printf 'JIRA_CLI_SCRIPT_REL_PATH=%s\n' "$(shell_quote "$JIRA_CLI_SCRIPT_REL_PATH")"
     printf 'JIRA_CLI_INSTALL_URL=%s\n' "$(shell_quote "$JIRA_CLI_INSTALL_URL")"
-    printf 'export APP_NAME INSTALLER_VERSION PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL REPO_DIR_NAME PROJECT_VERSION_FILE SKILL_REL_PATH SKILL_REL_PATHS JIRA_CLI_REPO JIRA_CLI_LATEST_URL JIRA_CLI_SCRIPT_REL_PATH JIRA_CLI_INSTALL_URL\n'
+    printf 'LARK_CLI_SCRIPT_REL_PATH=%s\n' "$(shell_quote "$LARK_CLI_SCRIPT_REL_PATH")"
+    printf 'export APP_NAME INSTALLER_VERSION PROJECT_DIR REPO_URL REPO_BRANCH RAW_BASE_URL REPO_DIR_NAME PROJECT_VERSION_FILE SKILL_REL_PATH SKILL_REL_PATHS JIRA_CLI_REPO JIRA_CLI_LATEST_URL JIRA_CLI_SCRIPT_REL_PATH JIRA_CLI_INSTALL_URL LARK_CLI_SCRIPT_REL_PATH\n'
     printf 'exec sh %s "$@"\n' "$(shell_quote "$PROJECT_DIR/install.sh")"
   } > "$_launcher"
 
@@ -1194,6 +1210,103 @@ resolve_install_config() {
   is_absolute_path "$_skill_install_path" || die "skills 安装目录必须是绝对路径。"
 }
 
+get_lark_cli_status_summary() {
+  if ! has_cmd lark-cli; then
+    printf '%s\n' "not installed"
+    return 0
+  fi
+
+  _lark_cli_path="$(command -v lark-cli)"
+  if lark-cli auth status >/dev/null 2>&1; then
+    printf '%s\n' "installed, auth ok: $_lark_cli_path"
+  else
+    printf '%s\n' "installed, auth needed: $_lark_cli_path"
+  fi
+}
+
+should_install_lark_cli() {
+  _mode="$(printf '%s\n' "${INSTALL_LARK_CLI:-prompt}" | tr '[:upper:]' '[:lower:]')"
+
+  case "$_mode" in
+    1|true|yes|y|on)
+      return 0
+      ;;
+    0|false|no|n|off)
+      return 1
+      ;;
+    prompt|"")
+      ;;
+    *)
+      warn "INSTALL_LARK_CLI 只能是 prompt、1 或 0；当前值为 ${INSTALL_LARK_CLI}，将跳过 Lark CLI。"
+      return 1
+      ;;
+  esac
+
+  if [ ! -t 0 ]; then
+    detail "非交互环境中默认跳过 Lark CLI；如需启用请设置 INSTALL_LARK_CLI=1。"
+    return 1
+  fi
+
+  blank
+  say "可选安装 Lark CLI"
+  say "本项目可以通过 Lark CLI 将生成的 Jira Markdown 报告发布为飞书云文档，"
+  say "并在后续发送给指定用户或群。该步骤需要安装官方飞书 CLI，"
+  say "并可能要求你在浏览器中完成飞书授权。"
+  summary_item "当前状态" "$SUMMARY_LARK_CLI"
+
+  printf '? 是否现在安装并配置 Lark CLI？[y/N]: ' >&2
+  IFS= read -r _answer || true
+
+  case "$(printf '%s\n' "$_answer" | tr '[:upper:]' '[:lower:]')" in
+    y|yes)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+run_lark_cli_setup() {
+  section "可选步骤：Lark CLI"
+  SUMMARY_LARK_CLI="$(get_lark_cli_status_summary)"
+
+  if ! should_install_lark_cli; then
+    detail "已跳过 Lark CLI 接入。"
+    SUMMARY_LARK_CLI_INSTALL="已跳过"
+    return 0
+  fi
+
+  _lark_script="$PROJECT_DIR/$LARK_CLI_SCRIPT_REL_PATH"
+  if [ ! -f "$_lark_script" ]; then
+    warn "找不到 Lark CLI 脚本：$_lark_script"
+    SUMMARY_LARK_CLI_INSTALL="失败：脚本不存在"
+    return 0
+  fi
+
+  case "$LARK_CLI_SETUP_MODE" in
+    install|bootstrap|doctor|config|login|status|update)
+      ;;
+    *)
+      warn "LARK_CLI_SETUP_MODE 不支持：$LARK_CLI_SETUP_MODE"
+      SUMMARY_LARK_CLI_INSTALL="失败：模式不支持"
+      return 0
+      ;;
+  esac
+
+  detail "执行 Lark CLI 接入：sh $_lark_script $LARK_CLI_SETUP_MODE"
+  if sh "$_lark_script" "$LARK_CLI_SETUP_MODE"; then
+    SUMMARY_LARK_CLI_INSTALL="已执行：$LARK_CLI_SETUP_MODE"
+    SUMMARY_LARK_CLI="$(get_lark_cli_status_summary)"
+    return 0
+  fi
+
+  warn "Lark CLI 接入执行失败；Jira 工作流安装结果仍会保留在总结中。"
+  SUMMARY_LARK_CLI_INSTALL="执行失败：$LARK_CLI_SETUP_MODE"
+  SUMMARY_LARK_CLI="$(get_lark_cli_status_summary)"
+  return 0
+}
+
 install_flow() {
   print_install_plan
   _install_total_steps=5
@@ -1216,6 +1329,7 @@ install_flow() {
   if ! is_disabled "$SKIP_CONFIG_STEPS"; then
     SUMMARY_SKILL_TARGET="已按 SKIP_CONFIG_STEPS 跳过"
     SUMMARY_LAUNCHER="已按 SKIP_CONFIG_STEPS 跳过"
+    run_lark_cli_setup
     print_install_summary "安装完成（已跳过 Skill 和本地命令）"
     return 0
   fi
@@ -1229,6 +1343,7 @@ install_flow() {
   install_launcher
   step_done
 
+  run_lark_cli_setup
   print_install_summary "安装完成"
 }
 
@@ -1254,6 +1369,7 @@ install_skills_flow() {
   install_launcher
   step_done
 
+  run_lark_cli_setup
   SUMMARY_JIRA_CLI="未检查（skills 命令不处理 jira-cli）"
   SUMMARY_JIRA_INIT="未执行（skills 命令不执行 jira init）"
   print_install_summary "Skill 安装完成"

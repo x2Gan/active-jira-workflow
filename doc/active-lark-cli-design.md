@@ -467,6 +467,16 @@ INSTALL_LARK_CLI=1 sh install.sh
 sh lark-cli.sh update
 ```
 
+## 11.1 当前实现状态
+
+截至 2026-04-30，仓库已按本方案落地以下能力：
+
+- `lark-cli.sh` 已提供 `help`、`doctor`、`install`、`config`、`login`、`status`、`update`、`bootstrap`。
+- `install.sh` 已接入默认关闭的 Lark CLI 可选步骤，支持 `INSTALL_LARK_CLI=prompt|1|0` 和 `LARK_CLI_SETUP_MODE=bootstrap|install`。
+- README 已补充 Lark CLI 的可选定位、主安装器启用方式、单独安装方式和常见故障排查。
+
+仍需在真实飞书环境中执行 `sh lark-cli.sh install`、`config`、`login`、`bootstrap` 以及主安装器 `INSTALL_LARK_CLI=1` 路径，完成外部副作用相关验收。
+
 ## 12. 验收标准
 
 ### 12.1 `lark-cli.sh`

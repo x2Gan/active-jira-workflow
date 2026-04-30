@@ -17,6 +17,7 @@
 ```text
 install.sh                         一键安装、更新、配置入口
 jira-cli.sh                        Linux 下安装/更新 ankitpokhrel/jira-cli 的辅助脚本
+lark-cli.sh                        可选安装/配置/登录官方 Lark CLI 的辅助脚本
 VERSION                            仓库版本
 active-jira/SKILL.md               Agent Skill 主说明
 active-jira-report/SKILL.md        场景化报告与规则化建单 Skill
@@ -79,6 +80,8 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-w
 4. 执行 `jira init`，生成 JiraCLI 配置。
 5. 将 `active-jira` 和 `active-jira-report` 两个 Skill 软链接到目标 Agent 的 skills 目录。
 6. 安装本地管理命令 `active-jira`。
+
+安装流程末尾会把 Lark CLI 作为可选增强能力提示出来，默认不会安装。它用于后续把生成的 Jira Markdown 报告发布为飞书云文档，并在确认后发送给指定用户或群。
 
 安装完成后，如果 `~/.local/bin` 已在 `PATH` 中，可以使用本地管理命令：
 
@@ -174,6 +177,51 @@ PROJECT_DIR="$(pwd)" INIT_JIRA_CLI=0 sh install.sh
 ```bash
 PROJECT_DIR="$(pwd)" INSTALL_JIRA_CLI=0 sh install.sh
 ```
+
+### Lark CLI 可选接入
+
+Lark CLI 是可选能力，不影响 Jira 查询和本地 Markdown 报告生成。需要发布到飞书云文档时，可以单独安装并完成飞书配置、登录：
+
+```bash
+sh lark-cli.sh bootstrap
+```
+
+也可以先只安装官方 CLI 和 Skill，不拉起浏览器配置或 OAuth 登录：
+
+```bash
+sh lark-cli.sh install
+```
+
+在主安装器中显式启用：
+
+```bash
+INSTALL_LARK_CLI=1 sh install.sh
+```
+
+如果只希望主安装器安装 Lark CLI、不执行配置和登录：
+
+```bash
+INSTALL_LARK_CLI=1 LARK_CLI_SETUP_MODE=install sh install.sh
+```
+
+常用维护命令：
+
+```bash
+sh lark-cli.sh doctor
+sh lark-cli.sh status
+sh lark-cli.sh update
+```
+
+`config` 和 `login` 会进入飞书官方配置或 OAuth 授权流程，可能打开浏览器或输出链接。本仓库不会保存 App Secret、access token、refresh token 或 OAuth code。
+
+常见问题：
+
+- 缺少 Node.js、npm 或 npx：先安装 Node.js LTS，再执行 `sh lark-cli.sh doctor`。
+- `npm install -g` 权限不足：建议使用 nvm/volta 或配置用户级 npm prefix。
+- 安装后找不到 `lark-cli`：执行 `sh lark-cli.sh doctor`，按提示把 npm 全局 bin 目录加入 `PATH`。
+- OAuth 授权码过期或授权中断：重新执行 `sh lark-cli.sh login`。
+- 权限不足：按飞书官方授权页面补充应用或用户权限后，重新执行 `sh lark-cli.sh login`。
+- 非交互安装默认跳过 Lark CLI：使用 `INSTALL_LARK_CLI=1` 显式启用。
 
 ### Skill 安装位置
 

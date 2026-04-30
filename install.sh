@@ -7,14 +7,14 @@ set -eu
 ###############################################################################
 # active-jira installer
 #
-# Install:
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)" -- /path/to/parent
+# Private repository install:
+#   gh auth login
+#   gh auth setup-git
+#   sh -c "$(gh api --method GET -H 'Accept: application/vnd.github.raw+json' /repos/active-ailab/active-jira-workflow/contents/install.sh -f ref=main)"
+#   sh -c "$(gh api --method GET -H 'Accept: application/vnd.github.raw+json' /repos/active-ailab/active-jira-workflow/contents/install.sh -f ref=main)" -- /path/to/parent
 #
 # Update:
 #   active-jira update
-#   or
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)" -- update
 #
 ###############################################################################
 
@@ -309,9 +309,11 @@ Usage:
   install.sh version [安装父目录]   显示安装器、源码、jira-cli 版本
   install.sh help         显示帮助
 
-One-line install:
-  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"
-  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)" -- /path/to/parent
+Private repository one-line install:
+  gh auth login
+  gh auth setup-git
+  sh -c "\$(gh api --method GET -H 'Accept: application/vnd.github.raw+json' /repos/active-ailab/active-jira-workflow/contents/install.sh -f ref=main)"
+  sh -c "\$(gh api --method GET -H 'Accept: application/vnd.github.raw+json' /repos/active-ailab/active-jira-workflow/contents/install.sh -f ref=main)" -- /path/to/parent
 
 Environment:
   APP_NAME                本地管理命令名，默认：active-jira

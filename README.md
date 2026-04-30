@@ -21,7 +21,7 @@
 
 | 场景 | 命令 |
 | --- | --- |
-| 一键安装 | `sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"` |
+| 一键安装 | `gh auth login && gh auth setup-git` 后执行下方 Private 安装命令 |
 | 更新源码和 jira-cli | `active-jira update` |
 | 重新安装 Skills | `active-jira skills` |
 | 查看版本 | `active-jira version` |
@@ -69,16 +69,30 @@ reports/                           本地生成报告目录，默认不提交 Gi
 
 ## 分发方式
 
-推荐分发方式是一行安装脚本：
+仓库切换为 Private 后，未认证访问 `raw.githubusercontent.com` 会返回 `404`。这不是文件不存在，而是 GitHub 对私有仓库 raw 文件的默认隐藏行为。推荐使用 GitHub CLI 先完成认证，再拉取安装脚本：
 
 ```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"
+gh auth login
+gh auth setup-git
+```
+
+Private 仓库一行安装：
+
+```bash
+sh -c "$(gh api --method GET -H 'Accept: application/vnd.github.raw+json' /repos/active-ailab/active-jira-workflow/contents/install.sh -f ref=main)"
 ```
 
 也可以指定源码安装父目录：
 
 ```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)" -- /path/to/parent
+sh -c "$(gh api --method GET -H 'Accept: application/vnd.github.raw+json' /repos/active-ailab/active-jira-workflow/contents/install.sh -f ref=main)" -- /path/to/parent
+```
+
+如果本机没有安装 GitHub CLI，可以使用具备仓库 `Contents: Read` 权限的 Token：
+
+```bash
+export GITHUB_TOKEN="github_pat_xxx"
+sh -c "$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN:?}" -H 'Accept: application/vnd.github.raw+json' 'https://api.github.com/repos/active-ailab/active-jira-workflow/contents/install.sh?ref=main')"
 ```
 
 源码会被放到：
@@ -90,19 +104,29 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-w
 如果需要先手动克隆仓库，也可以在仓库内执行：
 
 ```bash
-git clone https://github.com/active-ailab/active-jira-workflow.git
+gh repo clone active-ailab/active-jira-workflow
 cd active-jira-workflow
 PROJECT_DIR="$(pwd)" sh install.sh
 ```
 
 从已克隆源码目录直接运行 `install.sh` 时，建议显式设置 `PROJECT_DIR="$(pwd)"`，表示复用当前源码目录。
 
+如果使用 SSH，也可以手动克隆后安装：
+
+```bash
+git clone git@github.com:active-ailab/active-jira-workflow.git
+cd active-jira-workflow
+PROJECT_DIR="$(pwd)" REPO_URL=git@github.com:active-ailab/active-jira-workflow.git sh install.sh
+```
+
 ## 安装
 
 交互式完整安装：
 
 ```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"
+gh auth login
+gh auth setup-git
+sh -c "$(gh api --method GET -H 'Accept: application/vnd.github.raw+json' /repos/active-ailab/active-jira-workflow/contents/install.sh -f ref=main)"
 ```
 
 安装流程会依次做这些事：
@@ -180,7 +204,7 @@ JIRA_PROJECT="GENEVA" \
 JIRA_BOARD="Geneva Board" \
 SKILL_PROJECT_ROOT="/path/to/active/project" \
 SKILL_PLUGIN="codex" \
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/active-ailab/active-jira-workflow/main/install.sh)"
+sh -c "$(gh api --method GET -H 'Accept: application/vnd.github.raw+json' /repos/active-ailab/active-jira-workflow/contents/install.sh -f ref=main)"
 ```
 
 Jira Cloud 通常使用：

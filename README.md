@@ -27,7 +27,7 @@
 | 查看版本 | `active-jira version` |
 | 生成长期未处理 Jira 报告 | `python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w` |
 | 生成报告并发布到飞书 | `python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --dry-run` |
-| 发布并推送到群聊 | `python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --chat-id oc_xxx --grant-chat-view --dry-run` |
+| 发布已有报告并推送到群聊 | `python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --report-input reports/geneva-stale-jira.md --chat-id oc_xxx --grant-chat-view --dry-run` |
 | Lark CLI 环境检查 | `sh lark-cli.sh doctor` |
 
 ## 仓库摘要
@@ -342,7 +342,7 @@ python active-lark/scripts/publish_markdown_doc.py doc/active-jira-report-长期
 
 ```bash
 python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --dry-run
-python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --chat-id oc_xxx --grant-chat-view --dry-run
+python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --report-input reports/geneva-stale-jira.md --chat-id oc_xxx --grant-chat-view --dry-run
 ```
 
 发送消息、创建日程、覆盖文档、删除文件、审批等写操作都属于外部副作用；`active-lark` 会要求目标、内容和身份明确，并优先使用 `--dry-run` 预览。
@@ -440,12 +440,13 @@ project = GENEVA AND created <= "YYYY-MM-DD" AND status in (Open, "In Progress",
 
 这个场景和 jira-cli 的通用能力是分开的：通用能力负责“怎么查 Jira”，场景化脚本负责“Active/Geneva 业务口径是什么、结果怎么展示”。
 
-如果需要把报告发布到飞书文档并推送到机器人所在群聊，可以使用发布编排脚本。`--dry-run` 会预览飞书写请求；真正发送前请先确认稳定的 `oc_...` 群聊 ID：
+Markdown 报告生成后，Agent 会先询问是否继续创建飞书云文档并发送到指定群组。用户确认后，优先复用已经生成的报告文件，避免重复查询 Jira。`--dry-run` 会预览飞书写请求；真正发送前请先确认稳定的 `oc_...` 群聊 ID：
 
 ```bash
 python active-jira-report/scripts/publish_stale_jira_report_to_lark.py \
   --project GENEVA \
   --age 1w \
+  --report-input reports/geneva-stale-jira.md \
   --chat-id oc_xxx \
   --grant-chat-view \
   --dry-run

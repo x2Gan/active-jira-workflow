@@ -26,7 +26,8 @@ Script boundary:
 - Treat `../active-jira/scripts/query_stale_jiras.py` as a base stale-query/JQL helper, not as a complete project-report generator.
 - Do not move that script into this skill unless it becomes report-specific and stops being useful as a generic Jira helper.
 - Use `scripts/generate_stale_jira_report.py` for deterministic long-unhandled Jira reports. It has no default project or age; pass both from the user's trigger phrase.
-- Use `scripts/publish_stale_jira_report_to_lark.py` when the user asks to publish a long-unhandled Jira report to a Lark/Feishu document or send the document link to a known Lark chat.
+- After a Markdown report is generated successfully, proactively ask whether the user wants to continue by creating a Lark/Feishu document and sending the link to a specific chat. Treat a "yes" answer as explicit publish intent.
+- Use `scripts/publish_stale_jira_report_to_lark.py` when the user asks to publish a long-unhandled Jira report, answers yes to the post-report publish prompt, or wants to send the document link to a known Lark user or chat.
 
 ## Trigger examples
 
@@ -119,6 +120,8 @@ After extracting `project` and `age`, use the report generator:
 python active-jira-report/scripts/generate_stale_jira_report.py --project <PROJECT> --age <AGE>
 ```
 
+For normal Agent runs, prefer writing the report to a local Markdown file with `--output` so the post-generation Lark handoff can reuse the exact artifact.
+
 Useful explicit examples:
 
 ```bash
@@ -138,14 +141,31 @@ Useful generator options:
 - `--highlight-limit <N>`: default is `5`; controls how many issues appear in the opening Highlight.
 - `--input-json <FILE_OR_->`: generate a report from saved Jira raw JSON without querying live Jira, useful for testing or replay.
 
+Post-generation handoff:
+
+- When the generator has written a local Markdown file, show the path and ask one concise follow-up before any Lark side effect: `报告已生成：<REPORT_PATH>。需要我继续创建飞书云文档并发送到指定群组吗？如果需要，请告诉我群名或 oc_... 群 ID。`
+- If the user says yes but does not provide a target chat, create the Feishu document only when that is clearly desired, then ask for the stable recipient before sending a message.
+- If the user provides a chat name, resolve it with `lark-cli im +chat-search --query '<name>'` and confirm the stable `oc_...` target when the result is ambiguous.
+- If the original request already says to publish/send after generating the report, follow the publish workflow directly; still run `--dry-run` before the first send to a new chat or when permissions are uncertain.
+- Prefer reusing the existing Markdown file with `--report-input <REPORT_PATH>` so Jira is not queried twice after the user accepts the handoff.
+
 ### 4. Publish long-unhandled Jira report to Lark
 
-Use this workflow only when the user explicitly asks to create a Lark/Feishu document, send a message, grant document permission, or otherwise publish outside Jira. Publishing and messaging are external side effects.
+Use this workflow only when the user explicitly asks to create a Lark/Feishu document, answers yes to the post-generation handoff, asks to send a message, grants document permission, or otherwise publishes outside Jira. Publishing and messaging are external side effects.
 
 Recommended command for creating a document and returning its URL:
 
 ```bash
 python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project <PROJECT> --age <AGE>
+```
+
+Recommended command when a Markdown report has already been generated:
+
+```bash
+python active-jira-report/scripts/publish_stale_jira_report_to_lark.py \
+  --project <PROJECT> \
+  --age <AGE> \
+  --report-input <REPORT_PATH>
 ```
 
 Recommended dry-run before sending to a chat:
@@ -154,6 +174,7 @@ Recommended dry-run before sending to a chat:
 python active-jira-report/scripts/publish_stale_jira_report_to_lark.py \
   --project GENEVA \
   --age 1w \
+  --report-input reports/geneva-stale-jira.md \
   --chat-id oc_xxx \
   --grant-chat-view \
   --dry-run
@@ -165,18 +186,21 @@ Execute without `--dry-run` only after the target chat is clear:
 python active-jira-report/scripts/publish_stale_jira_report_to_lark.py \
   --project GENEVA \
   --age 1w \
+  --report-input reports/geneva-stale-jira.md \
   --chat-id oc_xxx \
   --grant-chat-view
 ```
 
 Publishing behavior:
 
-- The script writes a local Markdown report first, defaulting to `reports/<project>-stale-jira-<age>-<timestamp>.md`.
+- The script writes a local Markdown report first, defaulting to `reports/<project>-stale-jira-<age>-<timestamp>.md`, unless `--report-input <FILE>` is supplied.
 - It creates a new Lark document by default; pass `--doc <DOC_URL_OR_TOKEN> --doc-command append|overwrite` to update an existing document.
 - Pass `--parent-token` or `--parent-position` when the document must be created in a specific Drive folder or Wiki location.
 - `--chat-id oc_xxx` sends the published document link with `lark-cli im +messages-send --as bot`.
+- `--user-id ou_xxx` sends the published document link to a specific user; do not combine it with `--chat-id`.
 - `--grant-chat-view` grants the target chat view permission before sending, using the published document token.
-- Unknown options are forwarded to `generate_stale_jira_report.py`, so report filters such as `--comments top`, `--assignee-current-user`, or `--input-json` still work.
+- The wrapper uses a short target-aware message idempotency key by default. If providing `--idempotency-key`, keep it short; overly long values are shortened deterministically before sending.
+- Unknown options are forwarded to `generate_stale_jira_report.py` when the wrapper is generating a new report, so report filters such as `--comments top`, `--assignee-current-user`, or `--input-json` still work. Do not combine generator filters with `--report-input`, because Jira generation is skipped.
 
 Safety rules:
 

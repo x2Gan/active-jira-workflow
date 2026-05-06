@@ -30,21 +30,38 @@
 python active-jira-report/scripts/generate_stale_jira_report.py --project <PROJECT> --age <AGE>
 ```
 
+Agent 正常执行时优先使用 `--output <REPORT_PATH>` 写入本地 Markdown 文件，便于后续飞书发布复用同一份报告。
+
 2. 报告中必须保留脚本生成或实际执行的查询信息，包括查询时间、命令、项目、超时时间、生成的 JQL。需要确认 JQL 时先执行：
 
 ```bash
 python active-jira-report/scripts/generate_stale_jira_report.py --project <PROJECT> --age <AGE> --dry-run
 ```
 
-3. 若脚本输出字段不足以满足报告要求，应对命中的 Jira 逐条补充详情：
+3. 当 Markdown 报告成功生成到本地文件后，Agent 应主动询问是否继续创建飞书云文档并发送到指定群组：
+
+```text
+报告已生成：<REPORT_PATH>。需要我继续创建飞书云文档并发送到指定群组吗？如果需要，请告诉我群名或 oc_... 群 ID。
+```
+
+用户确认后，优先复用已经生成的 Markdown 文件，不重复查询 Jira：
+
+```bash
+python active-jira-report/scripts/publish_stale_jira_report_to_lark.py \
+  --project <PROJECT> \
+  --age <AGE> \
+  --report-input <REPORT_PATH>
+```
+
+4. 若脚本输出字段不足以满足报告要求，应对命中的 Jira 逐条补充详情：
 
 ```bash
 jira issue view <ISSUE-KEY> --raw
 jira issue view <ISSUE-KEY> --comments 5
 ```
 
-4. 补充详情时只读取报告必需字段：Jira 编号、创建时间、责任人、状态、Severity/Priority、Summary、Description 摘要、最近评论。不要创建、修改、流转、评论或分配 Jira，除非用户明确要求。
-5. 若 JiraCLI 查询失败，应在输出中说明失败命令和失败原因，并优先给出可复制执行的 JQL/命令，不要编造结果。
+5. 补充详情时只读取报告必需字段：Jira 编号、创建时间、责任人、状态、Severity/Priority、Summary、Description 摘要、最近评论。不要创建、修改、流转、评论或分配 Jira，除非用户明确要求。
+6. 若 JiraCLI 查询失败，应在输出中说明失败命令和失败原因，并优先给出可复制执行的 JQL/命令，不要编造结果。
 
 #### 数据处理规则
 1. 查询时间使用执行时本地时间，报告中以 `YYYY-MM-DD HH:mm:ss <timezone>` 记录。

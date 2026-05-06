@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a stale Jira report, publish it to Lark Docs, and notify a chat."""
+"""Generate a stale Jira report, publish it to Lark Docs, and notify a user or chat."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ MARKDOWN_PUBLISHER = REPO_ROOT / "active-lark" / "scripts" / "publish_markdown_d
 DOC_URL_PLACEHOLDER = "<LARK_DOC_URL_FROM_CREATE_RESPONSE>"
 DOC_TOKEN_PLACEHOLDER = "doxcn_dry_run_placeholder"
 URL_RE = re.compile(r"https?://[^\s\"'<>]+")
+MAX_IDEMPOTENCY_KEY_LEN = 50
 
 
 class PublishError(RuntimeError):
@@ -39,15 +40,19 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     parser = argparse.ArgumentParser(
         description=(
             "Generate a stale Jira Markdown report, create/update a Lark document, "
-            "and optionally send the document link to a Lark chat."
+            "and optionally send the document link to a Lark user or chat."
         ),
         epilog=(
-            "Unknown options are forwarded to generate_stale_jira_report.py. "
-            "Use --dry-run to preview Lark write requests; Jira report generation still runs."
+            "Unknown options are forwarded to generate_stale_jira_report.py unless --report-input is used. "
+            "Use --dry-run to preview Lark write requests; Jira report generation still runs when creating a new report."
         ),
     )
     parser.add_argument("--project", required=True, help="Jira project key, for example GENEVA.")
     parser.add_argument("--age", required=True, help="Age threshold, for example 1w, 14d, or 30天.")
+    parser.add_argument(
+        "--report-input",
+        help="Existing Markdown report to publish. When supplied, Jira report generation is skipped.",
+    )
     parser.add_argument(
         "--report-output",
         help="Markdown report output path. Defaults to reports/<project>-stale-jira-<age>-<timestamp>.md.",
@@ -59,7 +64,10 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
         default="append",
         help="Update command when --doc is supplied.",
     )
-    parser.add_argument("--title", help="Report document title. Defaults to '<PROJECT> 长期未处理 Jira 报告'.")
+    parser.add_argument(
+        "--title",
+        help="Report document title. Defaults to '<PROJECT> 超过<AGE>未处理 Jira 报告 - <YYYYMMDD>'.",
+    )
     parser.add_argument("--parent-token", help="Parent folder or wiki-node token for document creation.")
     parser.add_argument("--parent-position", help="Parent position for document creation, for example my_library.")
     parser.add_argument(
@@ -69,6 +77,7 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
         help="Identity used to create/update the Lark document.",
     )
     parser.add_argument("--chat-id", help="Lark chat ID (oc_xxx). When supplied, send the document link there.")
+    parser.add_argument("--user-id", help="Lark user ID (ou_xxx). When supplied, send the document link to that user.")
     parser.add_argument(
         "--grant-chat-view",
         action="store_true",
@@ -87,7 +96,10 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
             "{doc_url}, {report_path}."
         ),
     )
-    parser.add_argument("--idempotency-key", help="Lark message idempotency key.")
+    parser.add_argument(
+        "--idempotency-key",
+        help="Lark message idempotency key. Long values are shortened deterministically before sending.",
+    )
     parser.add_argument("--lark-cli", default="lark-cli", help="Path or command name for lark-cli.")
     parser.add_argument("--check-auth", action="store_true", help="Run lark-cli auth status before publishing.")
     parser.add_argument(
@@ -131,6 +143,10 @@ def default_report_output(project: str, age: str) -> Path:
     return REPO_ROOT / "reports" / f"{project_slug}-stale-jira-{age_slug}-{timestamp}.md"
 
 
+def default_title(project: str, age: str) -> str:
+    return f"{project} 超过{age}未处理 Jira 报告 - {datetime.now().strftime('%Y%m%d')}"
+
+
 def shell_join(cmd: list[str]) -> str:
     return shlex.join(cmd)
 
@@ -151,9 +167,17 @@ def run_command(cmd: list[str], *, verbose: bool, label: str) -> str:
     return result.stdout
 
 
-def validate_forwarded_args(report_args: list[str]) -> None:
-    if "--output" in report_args:
+def validate_forwarded_args(args: argparse.Namespace, report_args: list[str]) -> None:
+    if any(arg == "--output" or arg.startswith("--output=") for arg in report_args):
         raise PublishError("Use --report-output with this wrapper; --output is reserved for the report generator.")
+    if args.report_input and args.report_output:
+        raise PublishError("Use either --report-input or --report-output, not both.")
+    if args.report_input and report_args:
+        raise PublishError("Report generator options cannot be used with --report-input because generation is skipped.")
+    if args.chat_id and args.user_id:
+        raise PublishError("Use either --chat-id or --user-id for message delivery, not both.")
+    if args.grant_chat_view and not args.chat_id:
+        raise PublishError("--grant-chat-view requires --chat-id.")
 
 
 def build_generator_cmd(
@@ -349,8 +373,26 @@ def build_permission_cmd(args: argparse.Namespace, cli: str, doc_info: DocInfo) 
     return cmd
 
 
+def message_target_parts(args: argparse.Namespace) -> list[str]:
+    if args.chat_id and args.user_id:
+        raise PublishError("Use either --chat-id or --user-id for message delivery, not both.")
+    if args.chat_id:
+        return ["--chat-id", args.chat_id]
+    if args.user_id:
+        return ["--user-id", args.user_id]
+    raise PublishError("Message send requires --chat-id or --user-id.")
+
+
+def message_target_label(args: argparse.Namespace) -> str:
+    if args.chat_id:
+        return f"chat:{args.chat_id}"
+    if args.user_id:
+        return f"user:{args.user_id}"
+    return "none"
+
+
 def render_message(args: argparse.Namespace, report_path: Path, doc_url: str) -> str:
-    title = args.title or f"{args.project} 长期未处理 Jira 报告"
+    title = args.title or default_title(args.project, args.age)
     replacements = {
         "{title}": title,
         "{project}": args.project,
@@ -371,26 +413,42 @@ def render_message(args: argparse.Namespace, report_path: Path, doc_url: str) ->
     )
 
 
+def bounded_idempotency_key(prefix: str, seed: str) -> str:
+    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:12]
+    cleaned_prefix = safe_slug(prefix.lower(), "active-jira-report")
+    max_prefix_len = MAX_IDEMPOTENCY_KEY_LEN - len(digest) - 1
+    if max_prefix_len < 1:
+        return digest[:MAX_IDEMPOTENCY_KEY_LEN]
+    cleaned_prefix = cleaned_prefix[:max_prefix_len].strip("-._") or "active-jira-report"
+    return f"{cleaned_prefix}-{digest}"
+
+
 def default_idempotency_key(args: argparse.Namespace, doc_url: str, report_path: Path) -> str:
     project_slug = safe_slug(args.project.lower(), "project")
-    seed = f"{args.project}:{args.age}:{doc_url}:{report_path}"
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:12]
-    return f"active-jira-report-{project_slug}-{digest}"
+    target = message_target_label(args)
+    seed = f"{args.project}:{args.age}:{target}:{doc_url}:{report_path}"
+    return bounded_idempotency_key(f"active-jira-report-{project_slug}", seed)
+
+
+def effective_idempotency_key(args: argparse.Namespace, doc_url: str, report_path: Path) -> str:
+    if not args.idempotency_key:
+        return default_idempotency_key(args, doc_url, report_path)
+    cleaned = safe_slug(args.idempotency_key, "active-jira-report")
+    if len(cleaned) <= MAX_IDEMPOTENCY_KEY_LEN:
+        return cleaned
+    return bounded_idempotency_key("active-jira-report-manual", cleaned)
 
 
 def build_message_cmd(args: argparse.Namespace, cli: str, report_path: Path, doc_url: str) -> list[str]:
-    if not args.chat_id:
-        raise PublishError("Message send requires --chat-id.")
     message = render_message(args, report_path, doc_url)
-    idempotency_key = args.idempotency_key or default_idempotency_key(args, doc_url, report_path)
+    idempotency_key = effective_idempotency_key(args, doc_url, report_path)
     cmd = [
         cli,
         "im",
         "+messages-send",
         "--as",
         args.message_as,
-        "--chat-id",
-        args.chat_id,
+        *message_target_parts(args),
         "--markdown",
         message,
         "--idempotency-key",
@@ -415,21 +473,27 @@ def main(argv: list[str]) -> int:
     args, report_args = parse_args(argv)
     try:
         ensure_scripts_exist()
-        validate_forwarded_args(report_args)
+        validate_forwarded_args(args, report_args)
         cli = resolve_cli(args.lark_cli)
         if args.check_auth:
             run_command([cli, "auth", "status"], verbose=args.verbose, label="check Lark auth")
-        report_path = Path(args.report_output).expanduser() if args.report_output else default_report_output(args.project, args.age)
-        report_path.parent.mkdir(parents=True, exist_ok=True)
 
-        title = args.title or f"{args.project} 长期未处理 Jira 报告"
+        if args.report_input:
+            report_path = Path(args.report_input).expanduser()
+            if not report_path.is_file():
+                raise PublishError(f"Markdown report not found: {report_path}")
+            print(f"Using existing report: {report_path}", file=sys.stderr)
+        else:
+            report_path = Path(args.report_output).expanduser() if args.report_output else default_report_output(args.project, args.age)
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            run_command(
+                build_generator_cmd(args, report_args, report_path),
+                verbose=args.verbose,
+                label="generate stale Jira report",
+            )
+
+        title = args.title or default_title(args.project, args.age)
         args.title = title
-
-        run_command(
-            build_generator_cmd(args, report_args, report_path),
-            verbose=args.verbose,
-            label="generate stale Jira report",
-        )
 
         publish_stdout = run_command(
             build_publish_cmd(args, report_path, cli),
@@ -450,7 +514,7 @@ def main(argv: list[str]) -> int:
             permission_status = "dry-run" if args.dry_run else "granted"
 
         message_status = "skipped"
-        if args.chat_id:
+        if args.chat_id or args.user_id:
             if not doc_info.url:
                 raise PublishError("Could not determine document URL for message send.")
             run_command(

@@ -1,3 +1,3 @@
 interface:
   display_name: "Active Jira Report"
-  short_description: "Format Jira reports and create project-specific Jira issue drafts."
+  short_description: "Format Jira reports, publish them to Feishu, and create project-specific Jira issue drafts."

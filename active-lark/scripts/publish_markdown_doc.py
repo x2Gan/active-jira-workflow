@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--title",
-        help="Prepend this as an H1 heading before creating/updating the document.",
+        help="Use this as the top-level Markdown heading before creating/updating the document.",
     )
     parser.add_argument(
         "--as",
@@ -84,8 +84,19 @@ def content_payload(markdown_file: Path, title: str | None) -> str:
     if not title:
         return original
 
-    title_line = f"# {title.strip()}\n\n"
-    return original if original.lstrip().startswith("# ") else title_line + original
+    title_line = f"# {title.strip()}"
+    stripped = original.lstrip()
+    leading = original[: len(original) - len(stripped)]
+    if stripped.startswith("# "):
+        lines = stripped.splitlines(keepends=True)
+        newline = "\n"
+        if lines and lines[0].endswith("\r\n"):
+            newline = "\r\n"
+        elif lines and not lines[0].endswith(("\n", "\r\n")):
+            newline = ""
+        lines[0] = f"{title_line}{newline}"
+        return leading + "".join(lines)
+    return f"{title_line}\n\n{original}"
 
 
 def print_command(cmd: list[str]) -> None:

@@ -152,7 +152,7 @@ def dedupe_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     result: list[dict[str, Any]] = []
     for issue in issues:
-        key = str(get_nested(issue, ["key", "issueKey", "id"]) or "")
+        key = issue_key(issue)
         marker = key or json.dumps(issue, sort_keys=True, default=str)
         if marker in seen:
             continue
@@ -232,7 +232,7 @@ def fetch_all_pages(
 
 
 def enrich_issue_detail(jira_bin: str, issue: dict[str, Any], config: str | None) -> dict[str, Any]:
-    key = str(get_nested(issue, ["key", "issueKey", "id"]) or "")
+    key = issue_key(issue)
     if not key:
         return issue
     raw = load_json_loose(run_command(jira_view_raw_cmd(jira_bin, key, config)))
@@ -958,7 +958,7 @@ def main(argv: list[str]) -> int:
                     or not issue_has_configured_team(issue, team_fields)
                 )
                 if needs_detail:
-                    if args.verbose and index % 25 == 0:
+                    if args.verbose and (index == 1 or index % 25 == 0 or index == len(raw_issues)):
                         print(f"Enriching issue details {index}/{len(raw_issues)}", file=sys.stderr)
                     issue = enrich_issue_detail(args.jira_bin, issue, args.config)
                 enriched.append(issue)

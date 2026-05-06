@@ -420,17 +420,17 @@ python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA
 python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w --output reports/geneva-stale-jira.md
 ```
 
-输出 Markdown 报告固定包含查询信息、开头 Highlight、完整 Jira 清单，以及文档末尾汇总。Highlight 用于给 PM/PL 快速识别最应该立即修复或确认责任人的 Jira，表格固定为：
+输出 Markdown 报告固定包含查询信息、开头 Highlight、按归属Team分组的完整 Jira 清单，以及文档末尾汇总。Highlight 用于给 PM/PL 快速识别最应该立即修复或确认责任人的 Jira，表格固定为：
 
 | Jira | 紧急程度 | 超期天数 | 状态 | 责任人 | 推荐理由 | 摘要 |
 | --- | --- | --- | --- | --- | --- | --- |
 
-Jira 清单表格固定为：
+Jira 清单会先按 `归属Team` 分组，每组给出数量、状态分布、紧急程度分布、未分配责任人数量、平均超期、最久未处理和责任人 Top 3，然后列出该组全部 Jira。组内表格固定为：
 
 | 排序 | Jira | Severity/紧急程度 | 创建时间 | 超期时长(天) | 状态 | 责任人 | 问题摘要 | 评论摘要 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-文档末尾汇总包含总数、状态分布、紧急程度分布、未分配数量、最久未处理 Jira、责任人数量 Top 5、最久未处理 Top 5、评论抓取策略和紧急程度字段来源。
+文档末尾汇总包含总数、状态分布、紧急程度分布、未分配数量、最久未处理 Jira、责任人数量 Top 5、最久未处理 Top 5、评论抓取策略、紧急程度字段来源和归属Team字段来源。
 
 默认 JQL 语义：
 

@@ -109,8 +109,9 @@ Preferred output:
 - Do not rely on default project or default age values for stale reports; ask if either trigger parameter is missing.
 - Ensure all pages are fetched before reporting totals because `jira issue list` is capped at 100 issues per page.
 - Add an opening Highlight after query info for PM/PL reporting. It should list the issues that most deserve immediate repair or ownership confirmation, with a concise reason based on urgency, status risk, unassigned ownership, and overdue duration.
-- Produce the project-required table shape from `SKILL.md`, including ranking, Severity/urgency, overdue duration, status, owner, issue summary, and comment summary.
-- Add the fixed summary section at the end of the document with total stale issues, status distribution, urgency distribution, unassigned count, oldest issue, assignee Top 5, oldest-issue Top 5, comment policy, and urgency source.
+- Group the full issue list by `归属Team`; include group-level count, status distribution, urgency distribution, unassigned-owner count, average overdue days, oldest issue, and assignee Top 3 before listing every Jira in that group.
+- Produce the project-required table shape from `SKILL.md` inside each team group, including ranking, Severity/urgency, overdue duration, status, owner, issue summary, and comment summary.
+- Add the fixed summary section at the end of the document with total stale issues, status distribution, urgency distribution, unassigned count, oldest issue, assignee Top 5, oldest-issue Top 5, comment policy, urgency source, and `归属Team` source.
 
 ## 3. Report writing rules
 

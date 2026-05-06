@@ -134,6 +134,7 @@ Useful generator options:
 - `--comments none|top|all`: default is `none`; use `top --comments-top <N>` for only the highest-risk rows.
 - `--enrich-details missing-severity|all|none`: default is `missing-severity`, so Priority does not prevent fetching a missing true Severity field.
 - `--severity-field <FIELD_OR_PATH>`: add a project-specific Severity field path when known.
+- `--team-field <FIELD_OR_PATH>`: add a project-specific `归属Team` field path when known; the generator also checks common names and `customfield_11801`.
 - `--highlight-limit <N>`: default is `5`; controls how many issues appear in the opening Highlight.
 - `--input-json <FILE_OR_->`: generate a report from saved Jira raw JSON without querying live Jira, useful for testing or replay.
 
@@ -223,6 +224,7 @@ Data handling rules:
 - Urgency: prefer Jira `Severity`; fall back to `Priority`; if neither exists, mark `未设置`.
 - Severity order: `P0 > P1 > P2 > P3 > P4 > 未设置/未知`. Preserve non-P values such as `Blocker`, `Critical`, `High`, `Medium`, and `Low`; map them only when project evidence or Jira priority order supports the mapping.
 - Issue summary: prefer `Summary`; summarize `Description` into one sentence under about 80 Chinese characters when needed. If description is absent, use `Summary`.
+- Team ownership: group the full issue list by `归属Team`. Read it from the configured team field, common raw names, or `customfield_11801`; if it is absent or empty, use `未设置`. Treat the values as report facts from existing Jira only, and do not auto-fill or freeze concrete team values for create/edit flows.
 - Comment summary: optional by default. Include it when the user asks, the issue count is small, or comments contain obvious risk signals such as blockers, waiting, dependency, or confirmation needed; otherwise use `-`.
 - Highlight: place it near the beginning, immediately after query info and before the full Jira list. It should help a PM or PL quickly see which issues most deserve immediate repair or ownership confirmation. Select Highlight issues by comprehensive risk: urgency rank first, then status risk (`Reopened`, `Open`, `In Progress`, `Pending`, `Resolved`, `In Review`), then unassigned issues, then longer overdue duration. Include a short reason for each highlighted issue.
 - Count integrity: report totals only after all pages have been fetched. If pagination fails midway, report the partial status explicitly instead of presenting a final total.
@@ -247,7 +249,19 @@ Report format:
 | Jira | 紧急程度 | 超期天数 | 状态 | 责任人 | 推荐理由 | 摘要 |
 | --- | --- | --- | --- | --- | --- | --- |
 
-## Jira 清单
+## Jira 清单（按归属Team分组）
+
+共 <team-count> 个归属Team；各组内按紧急程度、创建时间、Jira Key 排序。
+
+### 归属Team：<TEAM>
+
+- 数量: <count>
+- 状态分布: <status count list>
+- 紧急程度: <urgency count list>
+- 未分配责任人: <count>
+- 平均超期: <days> 天
+- 最久未处理: <issue key>，<days> 天
+- 责任人 Top 3: <owner count list>
 
 | 排序 | Jira | Severity/紧急程度 | 创建时间 | 超期时长(天) | 状态 | 责任人 | 问题摘要 | 评论摘要 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -270,21 +284,22 @@ Report format:
 | Jira | 紧急程度 | 超期天数 | 状态 | 责任人 | 摘要 |
 | --- | --- | --- | --- | --- | --- |
 
-<comment policy>；紧急程度来源: <severity/priority source>。
+<comment policy>；紧急程度来源: <severity/priority source>；归属Team来源: <team source>。
 ```
 
-Place the summary at the end of the generated document, after the full Jira list, so readers can inspect the details first and then scan aggregate numbers. The summary must include total count, status distribution, urgency distribution, unassigned count, oldest issue, assignee Top 5 excluding `Unassigned`, oldest-issue Top 5, comment policy, and urgency source. Sort status distribution by count descending; sort urgency distribution by the same urgency rank used by the issue table.
+Place the summary at the end of the generated document, after the grouped full Jira list, so readers can inspect the details first and then scan aggregate numbers. The summary must include total count, status distribution, urgency distribution, unassigned count, oldest issue, assignee Top 5 excluding `Unassigned`, oldest-issue Top 5, comment policy, urgency source, and `归属Team` source. Sort status distribution by count descending; sort urgency distribution by the same urgency rank used by the issue table.
 
 The opening Highlight is a short decision aid, not a replacement for the full table. Keep it concise enough for PM/PL reporting, and use facts already available in the report: Jira key, urgency, overdue days, status, owner, summary, and a one-sentence reason. If no matching issues exist, keep the Highlight section and state that no issue needs immediate follow-up.
 
-Sort the Jira table by severity first (`P0` first), then earlier created time, then issue key for stable output. Make Jira keys clickable when a base URL is available; otherwise show the key. If no matching issues exist, still output the query info, empty table, and end-of-document summary, and state that no matching Jira issues were found. If JiraCLI fails, report the failed command and reason, then provide the copyable JQL or command instead of inventing results.
+Sort the global Jira ranking by severity first (`P0` first), then earlier created time, then issue key for stable output. Render all matching Jira under their `归属Team` group, keeping each group in that same ranking order and showing the global rank in the `排序` column. Make Jira keys clickable when a base URL is available; otherwise show the key. If no matching issues exist, still output the query info, empty table, and end-of-document summary, and state that no matching Jira issues were found. If JiraCLI fails, report the failed command and reason, then provide the copyable JQL or command instead of inventing results.
 
 Final validation checklist:
 
 - Query provenance is present: time, project, age threshold, command, and JQL.
 - Opening Highlight exists after query info and contains the most urgent issues plus concise reasons.
 - Pagination was completed or any incomplete pagination is disclosed.
-- End-of-document summary contains total count, status distribution, urgency distribution, unassigned count, oldest issue, assignee Top 5, oldest-issue Top 5, comment policy, and urgency source.
+- Full issue list is grouped by `归属Team`; every group has count, status distribution, urgency distribution, unassigned-owner count, average overdue days, oldest issue, assignee Top 3, and all Jira in that group.
+- End-of-document summary contains total count, status distribution, urgency distribution, unassigned count, oldest issue, assignee Top 5, oldest-issue Top 5, comment policy, urgency source, and `归属Team` source.
 - Table has exactly the required nine columns.
 - Severity source is documented or inferable, and sorting follows Severity, created time, then Jira key.
 - Comment-summary policy is clear when comments are omitted or partially fetched.

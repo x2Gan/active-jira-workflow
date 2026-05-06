@@ -50,6 +50,17 @@ SEVERITY_COLUMNS = [
     "fields.severity",
     "fields.Severity",
 ]
+TEAM_FIELDS = [
+    "customfield_11801",
+    "归属Team",
+    "归属 Team",
+    "归属团队",
+    "所属Team",
+    "所属 Team",
+    "所属团队",
+    "team",
+    "Team",
+]
 TABLE_COLUMNS = [
     "排序",
     "Jira",
@@ -83,6 +94,8 @@ class ReportIssue:
     summary: str
     severity: str
     severity_source: str
+    team: str
+    team_source: str
     comment_summary: str = "-"
 
 
@@ -354,6 +367,11 @@ def issue_has_configured_severity(issue: dict[str, Any], severity_fields: list[s
     return bool(value_to_text(severity_value))
 
 
+def issue_has_configured_team(issue: dict[str, Any], team_fields: list[str]) -> bool:
+    team_value, _ = first_present(issue, team_fields)
+    return bool(value_to_text(team_value))
+
+
 def extract_severity(issue: dict[str, Any], severity_fields: list[str]) -> tuple[str, str]:
     severity_value, severity_source = first_present(issue, severity_fields)
     severity_text = value_to_text(severity_value)
@@ -366,11 +384,18 @@ def extract_severity(issue: dict[str, Any], severity_fields: list[str]) -> tuple
     return "未设置", ""
 
 
+def extract_team(issue: dict[str, Any], team_fields: list[str]) -> tuple[str, str]:
+    team_value, team_source = first_present(issue, team_fields)
+    team_text = value_to_text(team_value)
+    return (team_text or "未设置", team_source)
+
+
 def issue_to_report_issue(
     issue: dict[str, Any],
     query_time: datetime,
     local_tz: timezone,
     severity_fields: list[str],
+    team_fields: list[str],
     summary_limit: int,
 ) -> ReportIssue:
     fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
@@ -385,6 +410,7 @@ def issue_to_report_issue(
     if not summary:
         summary = value_to_text(fields.get("description") or issue.get("description"))
     severity, severity_source = extract_severity(issue, severity_fields)
+    team, team_source = extract_team(issue, team_fields)
     return ReportIssue(
         key=key,
         created=created,
@@ -395,6 +421,8 @@ def issue_to_report_issue(
         summary=truncate(summary, summary_limit),
         severity=severity,
         severity_source=severity_source,
+        team=team,
+        team_source=team_source,
     )
 
 
@@ -479,6 +507,39 @@ def format_distribution(counts: Counter[str], severity_order: bool = False) -> s
     return ", ".join(f"{name} {count}" for name, count in items)
 
 
+def format_top_counts(counts: Counter[str], limit: int = 3) -> str:
+    if not counts:
+        return "-"
+    items = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    return ", ".join(f"{name} {count}" for name, count in items)
+
+
+def average_overdue_days(rows: list[ReportIssue]) -> float:
+    if not rows:
+        return 0.0
+    return sum(row.overdue_days for row in rows) / len(rows)
+
+
+def missing_team_sort_value(team: str) -> int:
+    return 1 if (team or "").strip() in {"", "-", "未设置", "未知"} else 0
+
+
+def team_groups(sorted_rows: list[ReportIssue]) -> list[tuple[str, list[ReportIssue]]]:
+    grouped: dict[str, list[ReportIssue]] = {}
+    for row in sorted_rows:
+        grouped.setdefault(row.team or "未设置", []).append(row)
+    return sorted(
+        grouped.items(),
+        key=lambda item: (
+            missing_team_sort_value(item[0]),
+            -len(item[1]),
+            min(severity_rank(row.severity) for row in item[1]),
+            min((row.created or datetime.max.replace(tzinfo=timezone.utc) for row in item[1])),
+            item[0],
+        ),
+    )
+
+
 def highlight_reason(row: ReportIssue) -> str:
     parts = [f"紧急程度 {row.severity}", f"已超期 {row.overdue_days:.1f} 天"]
     if row.status:
@@ -558,11 +619,89 @@ def append_highlight_section(lines: list[str], sorted_rows: list[ReportIssue], l
         )
 
 
+def append_issue_table(
+    lines: list[str],
+    rows: list[ReportIssue],
+    rank_by_key: dict[str, int] | None = None,
+) -> None:
+    lines.extend(
+        [
+            "| " + " | ".join(TABLE_COLUMNS) + " |",
+            "| " + " | ".join(["---"] * len(TABLE_COLUMNS)) + " |",
+        ]
+    )
+    if not rows:
+        lines.append("| - | - | - | - | - | - | - | 未查询到满足条件的 Jira | - |")
+        return
+    for local_index, row in enumerate(rows, start=1):
+        rank = rank_by_key.get(row.key, local_index) if rank_by_key else local_index
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(rank),
+                    md_escape(row.key),
+                    md_escape(row.severity),
+                    md_escape(row.created_display),
+                    f"{row.overdue_days:.1f}",
+                    md_escape(row.status),
+                    md_escape(row.assignee),
+                    md_escape(row.summary),
+                    md_escape(row.comment_summary),
+                ]
+            )
+            + " |"
+        )
+
+
+def append_team_grouped_issue_section(lines: list[str], sorted_rows: list[ReportIssue]) -> None:
+    rank_by_key = {row.key: index for index, row in enumerate(sorted_rows, start=1) if row.key}
+    grouped_rows = team_groups(sorted_rows)
+    lines.extend(
+        [
+            "",
+            "## Jira 清单（按归属Team分组）",
+            "",
+            f"共 {len(grouped_rows)} 个归属Team；各组内按紧急程度、创建时间、Jira Key 排序。",
+        ]
+    )
+    if not sorted_rows:
+        lines.append("")
+        append_issue_table(lines, [], rank_by_key)
+        return
+
+    for team, rows in grouped_rows:
+        oldest = max(rows, key=lambda row: row.overdue_days, default=None)
+        unassigned = sum(1 for row in rows if row.assignee.lower() == "unassigned")
+        status_counts = Counter(row.status or "未设置" for row in rows)
+        severity_counts = Counter(row.severity or "未设置" for row in rows)
+        assignee_counts = Counter(row.assignee for row in rows if row.assignee.lower() != "unassigned")
+        oldest_text = f"{oldest.key}，{oldest.overdue_days:.1f} 天" if oldest else "-"
+
+        lines.extend(
+            [
+                "",
+                f"### 归属Team：{md_escape(team)}",
+                "",
+                f"- 数量: {len(rows)}",
+                f"- 状态分布: {format_distribution(status_counts)}",
+                f"- 紧急程度: {format_distribution(severity_counts, severity_order=True)}",
+                f"- 未分配责任人: {unassigned}",
+                f"- 平均超期: {average_overdue_days(rows):.1f} 天",
+                f"- 最久未处理: {oldest_text}",
+                f"- 责任人 Top 3: {format_top_counts(assignee_counts, 3)}",
+                "",
+            ]
+        )
+        append_issue_table(lines, rows, rank_by_key)
+
+
 def append_summary_section(
     lines: list[str],
     sorted_rows: list[ReportIssue],
     comment_policy: str,
     source_line: str,
+    team_source_line: str,
 ) -> None:
     oldest = max(sorted_rows, key=lambda row: row.overdue_days, default=None)
     unassigned = sum(1 for row in sorted_rows if row.assignee.lower() == "unassigned")
@@ -626,7 +765,7 @@ def append_summary_section(
     lines.extend(
         [
             "",
-            f"{comment_policy}；紧急程度来源: {source_line}。",
+            f"{comment_policy}；紧急程度来源: {source_line}；归属Team来源: {team_source_line}。",
         ]
     )
 
@@ -647,6 +786,8 @@ def build_report(
     sorted_rows = sort_report_issues(rows)
     severity_sources = sorted({row.severity_source or "未设置" for row in sorted_rows}) if sorted_rows else []
     source_line = ", ".join(severity_sources) if severity_sources else "-"
+    team_sources = sorted({row.team_source or "未设置" for row in sorted_rows}) if sorted_rows else []
+    team_source_line = ", ".join(team_sources) if team_sources else "-"
     time_label = f"{query_time.strftime('%Y-%m-%d %H:%M:%S')} {local_timezone_label(query_time)}"
 
     lines = [
@@ -663,41 +804,12 @@ def build_report(
         f"- 分页: {'input-json' if input_mode else f'{page_count} 页'}",
         f"- 评论摘要策略: {comment_policy}",
         f"- Severity 来源: {source_line}",
+        f"- 归属Team 来源: {team_source_line}",
     ]
 
     append_highlight_section(lines, sorted_rows, highlight_limit)
-    lines.extend(
-        [
-            "",
-            "## Jira 清单",
-            "",
-            "| " + " | ".join(TABLE_COLUMNS) + " |",
-            "| " + " | ".join(["---"] * len(TABLE_COLUMNS)) + " |",
-        ]
-    )
-
-    if not sorted_rows:
-        lines.append("| - | - | - | - | - | - | - | 未查询到满足条件的 Jira | - |")
-    else:
-        for index, row in enumerate(sorted_rows, start=1):
-            lines.append(
-                "| "
-                + " | ".join(
-                    [
-                        str(index),
-                        md_escape(row.key),
-                        md_escape(row.severity),
-                        md_escape(row.created_display),
-                        f"{row.overdue_days:.1f}",
-                        md_escape(row.status),
-                        md_escape(row.assignee),
-                        md_escape(row.summary),
-                        md_escape(row.comment_summary),
-                    ]
-                )
-                + " |"
-            )
-    append_summary_section(lines, sorted_rows, comment_policy, source_line)
+    append_team_grouped_issue_section(lines, sorted_rows)
+    append_summary_section(lines, sorted_rows, comment_policy, source_line, team_source_line)
     return "\n".join(lines)
 
 
@@ -743,11 +855,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--page-size", type=int, default=100, help="JiraCLI page size. Max: 100.")
     parser.add_argument("--input-json", action="append", help="Read raw Jira JSON from a file or '-' instead of running JiraCLI.")
     parser.add_argument("--severity-field", action="append", help="Additional severity field path, e.g. customfield_10401.")
+    parser.add_argument("--team-field", action="append", help="Additional 归属Team field path, e.g. customfield_11801.")
     parser.add_argument(
         "--enrich-details",
         choices=["none", "missing-severity", "all"],
         default="missing-severity",
-        help="Fetch jira issue view --raw for all issues, only missing severity, or none.",
+        help="Fetch jira issue view --raw for all issues, only issues missing required report fields, or none.",
     )
     parser.add_argument(
         "--comments",
@@ -808,6 +921,7 @@ def main(argv: list[str]) -> int:
         )
         report_command = build_report_command(argv)
         severity_fields = list(dict.fromkeys((args.severity_field or []) + SEVERITY_COLUMNS))
+        team_fields = list(dict.fromkeys((args.team_field or []) + TEAM_FIELDS))
 
         if args.dry_run:
             print("JQL:")
@@ -838,7 +952,11 @@ def main(argv: list[str]) -> int:
             check_jira_bin(args.jira_bin)
             enriched: list[dict[str, Any]] = []
             for index, issue in enumerate(raw_issues, start=1):
-                needs_detail = args.enrich_details == "all" or not issue_has_configured_severity(issue, severity_fields)
+                needs_detail = (
+                    args.enrich_details == "all"
+                    or not issue_has_configured_severity(issue, severity_fields)
+                    or not issue_has_configured_team(issue, team_fields)
+                )
                 if needs_detail:
                     if args.verbose and index % 25 == 0:
                         print(f"Enriching issue details {index}/{len(raw_issues)}", file=sys.stderr)
@@ -849,7 +967,7 @@ def main(argv: list[str]) -> int:
         query_time = datetime.now().astimezone()
         local_tz = query_time.tzinfo or timezone.utc
         rows = [
-            issue_to_report_issue(issue, query_time, local_tz, severity_fields, args.summary_limit)
+            issue_to_report_issue(issue, query_time, local_tz, severity_fields, team_fields, args.summary_limit)
             for issue in raw_issues
         ]
         rows = sort_report_issues(rows)

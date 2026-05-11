@@ -107,59 +107,59 @@ rg -n "Design -> Build 映射|阶段总览|阻塞项|解阻条件" doc/active-ji
 
 ### P1.1 创建 Skill 目录骨架
 
-- [ ] 代码目标：
-  - [ ] 新增 `active-jira-automation/` 目录。
-  - [ ] 创建 `SKILL.md`、`agents/openai.yaml`、`references/`、`scripts/`、`tests/` 基础结构。
-- [ ] 测试目标：
-  - [ ] 目录结构与框架文档第 11 节保持一致。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `active-jira-automation/` 目录。
+  - [x] 创建 `SKILL.md`、`agents/openai.yaml`、`references/`、`scripts/`、`tests/` 基础结构。
+- [x] 测试目标：
+  - [x] 目录结构与框架文档第 11 节保持一致。
+- [x] 验收命令：
 
 ```sh
 find active-jira-automation -maxdepth 3 | sort
 ```
 
-- [ ] 阻塞项：
-  - [ ] 技术方案未冻结时，目录设计可能反复变动。
-- [ ] 解阻条件：
-  - [ ] 按框架文档第 11 节一次性创建最小骨架，后续只增量补充。
+- [x] 阻塞项：
+  - [x] 技术方案未冻结时，目录设计可能反复变动。
+- [x] 解阻条件：
+  - [x] 按框架文档第 11 节一次性创建最小骨架，后续只增量补充。
 
 ### P1.2 起草 SKILL 基础说明
 
-- [ ] 代码目标：
-  - [ ] 编写 `active-jira-automation/SKILL.md`。
-  - [ ] 覆盖创建、列出、暂停、恢复、删除任务的触发语句。
-  - [ ] 覆盖场景一的参数收集和 `dry-run` 规则。
-- [ ] 测试目标：
-  - [ ] 文案能准确驱动 Agent 走到“框架公共能力 + 场景一”的执行路径。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 编写 `active-jira-automation/SKILL.md`。
+  - [x] 覆盖创建、列出、暂停、恢复、删除任务的触发语句。
+  - [x] 覆盖场景一的参数收集和 `dry-run` 规则。
+- [x] 测试目标：
+  - [x] 文案能准确驱动 Agent 走到“框架公共能力 + 场景一”的执行路径。
+- [x] 验收命令：
 
 ```sh
 rg -n "create|list|pause|resume|delete|new-p0-bug-alert|dry-run" active-jira-automation/SKILL.md
 ```
 
-- [ ] 阻塞项：
-  - [ ] 场景一的参数名和默认值还可能调整。
-- [ ] 解阻条件：
-  - [ ] 先按现有场景文档冻结最小字段：`project/query_rule/schedule_type/schedule_expr/target_chat_id`。
+- [x] 阻塞项：
+  - [x] 场景一的参数名和默认值还可能调整。
+- [x] 解阻条件：
+  - [x] 先按现有场景文档冻结最小字段：`project/query_rule/schedule_type/schedule_expr/target_chat_id`。
 
 ### P1.3 创建场景注册表骨架
 
-- [ ] 代码目标：
-  - [ ] 新增 `scripts/scenario_registry.py`。
-  - [ ] 支持按 `scenario_key` 注册和读取场景实现。
-  - [ ] 预留场景接入契约校验入口。
-- [ ] 测试目标：
-  - [ ] 至少覆盖“注册成功、重复注册失败、读取未知场景失败”。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `scripts/scenario_registry.py`。
+  - [x] 支持按 `scenario_key` 注册和读取场景实现。
+  - [x] 预留场景接入契约校验入口。
+- [x] 测试目标：
+  - [x] 至少覆盖“注册成功、重复注册失败、读取未知场景失败”。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_scenario_registry.py'
 ```
 
-- [ ] 阻塞项：
-  - [ ] 场景对象契约未固定。
-- [ ] 解阻条件：
-  - [ ] 先以框架文档第 10 节中的必填接入项为最小契约。
+- [x] 阻塞项：
+  - [x] 场景对象契约未固定。
+- [x] 解阻条件：
+  - [x] 先以框架文档第 10 节中的必填接入项为最小契约。
 
 ## 6. P2 任务管理与持久化
 

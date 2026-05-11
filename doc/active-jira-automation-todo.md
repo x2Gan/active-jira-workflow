@@ -47,61 +47,61 @@
 
 ### P0.1 冻结框架能力边界
 
-- [ ] 代码目标：
-  - [ ] 确认框架只承接任务管理、场景接入、统一 runner、interactive 卡片投递，不重复封装通用 Jira/Lark 基础能力。
-  - [ ] 确认首期只支持单场景 `new-p0-bug-alert`。
-- [ ] 测试目标：
-  - [ ] 文档审阅时能明确区分框架公共能力与场景差异。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 确认框架只承接任务管理、场景接入、统一 runner、interactive 卡片投递，不重复封装通用 Jira/Lark 基础能力。
+  - [x] 确认首期只支持单场景 `new-p0-bug-alert`。
+- [x] 测试目标：
+  - [x] 文档审阅时能明确区分框架公共能力与场景差异。
+- [x] 验收命令：
 
 ```sh
 rg -n "职责边界|框架能力分层|场景接入契约|首期落地范围" doc/active-jira-automation\ 框架能力设计.md
 rg -n "场景接入主文档的实现映射|场景代码接入建议" doc/active-jira-automation\ 定时查询P0并提醒场景设计.md
 ```
 
-- [ ] 阻塞项：
-  - [ ] 若后续要同时接入多个场景，首期范围可能膨胀。
-- [ ] 解阻条件：
-  - [ ] 明确 MVP 仅覆盖框架壳 + 场景一。
+- [x] 阻塞项：
+  - [x] 若后续要同时接入多个场景，首期范围可能膨胀。
+- [x] 解阻条件：
+  - [x] 明确 MVP 仅覆盖框架壳 + 场景一。
 
 ### P0.2 确认外部依赖契约
 
-- [ ] 代码目标：
-  - [ ] 明确 Openclaw 的创建、暂停、恢复、删除接口形态。
-  - [ ] 明确飞书 interactive 卡片发送首期是否直接走 raw API fallback。
-  - [ ] 明确 Jira 字段 `Severity/Priority/归属Team/来源/修复版本` 的稳定路径。
-- [ ] 测试目标：
-  - [ ] 形成一份外部依赖确认清单，避免实现阶段出现字段猜测或接口漂移。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 明确 Openclaw 的创建、暂停、恢复、删除接口形态。
+  - [x] 明确飞书 interactive 卡片发送首期是否直接走 raw API fallback。
+  - [x] 明确 Jira 字段 `Severity/Priority/归属Team/来源/修复版本` 的稳定路径。
+- [x] 测试目标：
+  - [x] 形成一份外部依赖确认清单，避免实现阶段出现字段猜测或接口漂移。
+- [x] 验收命令：
 
 ```sh
-rg -n "待确认项" doc/active-jira-automation\ 框架能力设计.md
-rg -n "待确认项" doc/active-jira-automation\ 定时查询P0并提醒场景设计.md
+test -f doc/active-jira-automation\ P0设计冻结与外部契约确认.md
+rg -n "Openclaw|raw API fallback|customfield_10401|fixVersions|customfield_11801|来源" doc/active-jira-automation\ P0设计冻结与外部契约确认.md
 ```
 
-- [ ] 阻塞项：
-  - [ ] Openclaw 接口未冻结。
-  - [ ] Jira 字段路径仍不稳定。
-- [ ] 解阻条件：
-  - [ ] 补一份外部接口确认记录，至少冻结首期字段与发送路径。
+- [x] 阻塞项：
+  - [x] Openclaw 接口未冻结。
+  - [x] Jira 字段路径仍不稳定。
+- [x] 解阻条件：
+  - [x] 补一份外部接口确认记录，至少冻结首期字段与发送路径。
 
 ### P0.3 冻结专项 TODO 基线
 
 - [x] 代码目标：
   - [x] 产出本专项 TODO 文档，形成执行基线。
-- [ ] 测试目标：
-  - [ ] TODO 文档结构覆盖阶段、原子任务、验收命令、阻塞项与解阻条件。
-- [ ] 验收命令：
+- [x] 测试目标：
+  - [x] TODO 文档结构覆盖阶段、原子任务、验收命令、阻塞项与解阻条件。
+- [x] 验收命令：
 
 ```sh
 test -f doc/active-jira-automation-todo.md
 rg -n "Design -> Build 映射|阶段总览|阻塞项|解阻条件" doc/active-jira-automation-todo.md
 ```
 
-- [ ] 阻塞项：
-  - [ ] 无。
-- [ ] 解阻条件：
-  - [ ] 无。
+- [x] 阻塞项：
+  - [x] 无。
+- [x] 解阻条件：
+  - [x] 无。
 
 ## 5. P1 Skill 目录与框架骨架
 
@@ -477,10 +477,10 @@ rg -n "首期落地范围|验收标准" doc/active-jira-automation\ 框架能力
 
 ## 12. 当前显式阻塞项
 
-以下问题若不尽快确认，会影响实现排期：
+P0 已完成。进入实现阶段后，仍需要提前关注以下阻塞：
 
-1. Openclaw 的调度接口是否已可用。
-2. 飞书 interactive 卡片首期发送路径是否确认使用 raw API fallback。
-3. Jira 中关键业务字段的稳定路径是否已经确认。
+1. Openclaw 的真实接口、鉴权方式和错误码如何映射到 `scheduler_adapter.py`。
+2. 目标项目中 `来源` 字段的具体读取路径仍需要业务侧或真实 Jira 数据确认。
+3. 若单次命中 Jira 数量较大，是否需要分批发送、上限控制或折叠策略。
 
-建议优先解这 3 个阻塞，再启动 P3 之后的实现。
+建议在进入 P3 和 P6 之前优先收敛这 3 个实现期阻塞。

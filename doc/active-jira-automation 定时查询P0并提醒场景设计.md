@@ -5,6 +5,7 @@
 本文档是 `active-jira-automation` 的场景子方案，专门描述“新增 P0 BUG Jira 定时提醒”这一场景的业务规则、接入方式和模板约束。
 
 框架公共能力设计见主文档：[active-jira-automation 框架能力设计](./active-jira-automation%20框架能力设计.md)。
+P0 设计冻结与外部契约确认见：[active-jira-automation P0 设计冻结与外部契约确认](./active-jira-automation%20P0设计冻结与外部契约确认.md)。
 
 本文只描述场景一，不重复定义任务管理、调度适配、通用 runner、通用 interactive 卡片校验等框架公共内容。
 
@@ -296,11 +297,17 @@ active-jira-automation/
 5. 对同一条 Jira 不重复推送。
 6. 用户可以暂停、恢复、删除该任务。
 
-## 11. 待确认项
+## 11. P0 冻结决定与剩余待确认项
 
-本场景在正式实现前，需要补充确认：
+P0 已冻结决定见：[active-jira-automation P0 设计冻结与外部契约确认](./active-jira-automation%20P0设计冻结与外部契约确认.md)。
 
-1. Openclaw 当前支持的任务创建、暂停、恢复、删除接口形态。
-2. Jira 中 `Severity`、`Priority`、`归属Team`、`来源`、`修复版本` 对应的稳定字段路径。
-3. 首期是否允许除了 `P0 + Bug` 之外再附加标签、组件等复合过滤条件。
-4. 单次命中 Jira 数量很多时，是否需要做卡片发送上限、分批或折叠策略。
+对场景一，P0 已明确以下实现前提：
+
+1. 调度集成基于框架侧统一 `scheduler_adapter` 契约，而不是直接依赖某个 Openclaw SDK 细节。
+2. 飞书发送路径首期固定为 raw API fallback，消息类型固定为 `interactive`。
+3. 字段读取契约固定为：`Severity -> customfield_10401`、`Priority -> priority`、`Fix Version/s -> fixVersions`、`归属Team -> 配置字段/常见字段/customfield_11801`、`来源 -> 场景配置字段路径`。
+
+本场景在正式实现前，仍保留以下实现期确认项：
+
+1. 首期是否允许除了 `P0 + Bug` 之外再附加标签、组件等复合过滤条件。
+2. 单次命中 Jira 数量很多时，是否需要做卡片发送上限、分批或折叠策略。

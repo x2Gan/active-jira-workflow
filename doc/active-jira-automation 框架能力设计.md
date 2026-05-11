@@ -9,6 +9,7 @@
 - 本文档负责框架公共能力设计。
 - 场景子文档只负责描述单个场景的业务规则、参数、模板和接入映射。
 - 当前首个场景子文档见：[active-jira-automation 定时查询P0并提醒场景设计](./active-jira-automation%20定时查询P0并提醒场景设计.md)。
+- P0 设计冻结与外部契约确认见：[active-jira-automation P0 设计冻结与外部契约确认](./active-jira-automation%20P0设计冻结与外部契约确认.md)。
 
 后续新增场景时，均应以“子能力 / 子方案”的形式接入本框架，而不是在各自文档中重复定义调度、检查点、去重、投递、审计等公共能力。
 
@@ -365,15 +366,20 @@ active-jira-automation/
 - 多场景依赖编排
 - 高级交互式卡片组件
 
-## 14. 待确认项
+## 14. P0 冻结决定与剩余待确认项
 
-在正式实现前，需要优先确认以下事项：
+P0 已冻结决定见：[active-jira-automation P0 设计冻结与外部契约确认](./active-jira-automation%20P0设计冻结与外部契约确认.md)。
 
-1. Openclaw 当前支持的创建、暂停、恢复、删除接口形态。
-2. 飞书 interactive 卡片发送是否先直接走 raw API fallback。
-3. Jira 关键字段如 `Severity`、`Priority`、`归属Team`、`来源`、`修复版本` 的稳定字段路径。
-4. 首期是否需要支持多项目、多规则复合匹配。
-5. 单次命中数量很大时的限流、分批和消息折叠策略。
+在该确认记录基础上，框架侧已固定以下事项：
+
+1. 调度层采用框架侧统一 `scheduler_adapter` 契约，对上暴露 `create/pause/resume/delete/get_status`。
+2. 飞书 interactive 卡片首期发送路径固定为 `active-lark` raw API fallback。
+3. 关键字段读取契约固定为：`Severity -> customfield_10401`、`Priority -> priority`、`Fix Version/s -> fixVersions`、`归属Team -> 配置字段/常见字段/customfield_11801`、`来源 -> 场景配置字段路径`。
+
+P0 之后仍保留为实现期确认项的事项：
+
+1. 首期是否需要支持多项目、多规则复合匹配。
+2. 单次命中数量很大时的限流、分批和消息折叠策略。
 
 ## 15. 结论
 

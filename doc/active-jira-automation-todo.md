@@ -165,62 +165,62 @@ python -m unittest discover active-jira-automation/tests -p 'test_scenario_regis
 
 ### P2.1 实现任务模型与存储 helper
 
-- [ ] 代码目标：
-  - [ ] 实现任务定义、运行态、日志路径的读写 helper。
-  - [ ] 固定 `data/tasks/`、`data/runtime/`、`data/logs/` 布局。
-  - [ ] 定义任务状态机：`enabled/paused/deleted`。
-- [ ] 测试目标：
-  - [ ] 覆盖创建任务定义、更新状态、写入运行态、写入日志。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 实现任务定义、运行态、日志路径的读写 helper。
+  - [x] 固定 `data/tasks/`、`data/runtime/`、`data/logs/` 布局。
+  - [x] 定义任务状态机：`enabled/paused/deleted`。
+- [x] 测试目标：
+  - [x] 覆盖创建任务定义、更新状态、写入运行态、写入日志。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_task_store.py'
 ```
 
-- [ ] 阻塞项：
-  - [ ] `task_id` 生成规则和日志格式未确定。
-- [ ] 解阻条件：
-  - [ ] 先使用稳定 slug + 时间戳或 UUID，日志统一写 JSON。
+- [x] 阻塞项：
+  - [x] `task_id` 生成规则和日志格式未确定。
+- [x] 解阻条件：
+  - [x] 先使用稳定 slug + 时间戳或 UUID，日志统一写 JSON。
 
 ### P2.2 实现 `manage_tasks.py list/pause/resume/delete`
 
-- [ ] 代码目标：
-  - [ ] 新增 `manage_tasks.py`。
-  - [ ] 先实现 `list`、`pause`、`resume`、`delete`。
-  - [ ] `delete` 默认为逻辑删除并保留历史日志。
-- [ ] 测试目标：
-  - [ ] 覆盖按 `task_id` 操作、按名称唯一匹配操作、删除确认前置约束。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `manage_tasks.py`。
+  - [x] 先实现 `list`、`pause`、`resume`、`delete`。
+  - [x] `delete` 默认为逻辑删除并保留历史日志。
+- [x] 测试目标：
+  - [x] 覆盖按 `task_id` 操作、按名称唯一匹配操作、删除确认前置约束。
+- [x] 验收命令：
 
 ```sh
 python active-jira-automation/scripts/manage_tasks.py --help
 python -m unittest discover active-jira-automation/tests -p 'test_manage_tasks.py'
 ```
 
-- [ ] 阻塞项：
-  - [ ] CLI 参数设计不稳，后续 create 子命令可能影响整体命令形态。
-- [ ] 解阻条件：
-  - [ ] 先冻结子命令风格：`manage_tasks.py <subcommand> ...`。
+- [x] 阻塞项：
+  - [x] CLI 参数设计不稳，后续 create 子命令可能影响整体命令形态。
+- [x] 解阻条件：
+  - [x] 先冻结子命令风格：`manage_tasks.py <subcommand> ...`。
 
 ### P2.3 实现 `manage_tasks.py create` 基础落盘能力
 
-- [ ] 代码目标：
-  - [ ] 支持把结构化配置写入任务定义。
-  - [ ] 支持输出创建确认摘要。
-  - [ ] 暂不绑定交互问答，先支持脚本参数与 JSON 输入。
-- [ ] 测试目标：
-  - [ ] 覆盖最小合法任务创建、缺失必填字段报错、重复任务名处理。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 支持把结构化配置写入任务定义。
+  - [x] 支持输出创建确认摘要。
+  - [x] 暂不绑定交互问答，先支持脚本参数与 JSON 输入。
+- [x] 测试目标：
+  - [x] 覆盖最小合法任务创建、缺失必填字段报错、重复任务名处理。
+- [x] 验收命令：
 
 ```sh
 python active-jira-automation/scripts/manage_tasks.py create --help
 python -m unittest discover active-jira-automation/tests -p 'test_manage_tasks.py'
 ```
 
-- [ ] 阻塞项：
-  - [ ] 群名到 `chat_id` 的解析策略尚未落地。
-- [ ] 解阻条件：
-  - [ ] 首期先要求 `create` 阶段传入稳定 `target_chat_id`，群名解析后补。
+- [x] 阻塞项：
+  - [x] 群名到 `chat_id` 的解析策略尚未落地。
+- [x] 解阻条件：
+  - [x] 首期先要求 `create` 阶段传入稳定 `target_chat_id`，群名解析后补。
 
 ## 7. P3 通用执行引擎与调度适配
 

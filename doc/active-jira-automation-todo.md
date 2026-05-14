@@ -286,60 +286,60 @@ python -m unittest discover active-jira-automation/tests -p 'test_scheduler_adap
 
 ### P4.1 实现通用 interactive 卡片渲染器
 
-- [ ] 代码目标：
-  - [ ] 新增 `renderers/interactive_card_renderer.py`。
-  - [ ] 提供 `config/header/elements` 基础结构校验。
-  - [ ] 限制允许组件白名单。
-- [ ] 测试目标：
-  - [ ] 覆盖合法 payload、缺失 `header`、空 `elements`、非法 tag、字段转义。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `renderers/interactive_card_renderer.py`。
+  - [x] 提供 `config/header/elements` 基础结构校验。
+  - [x] 限制允许组件白名单。
+- [x] 测试目标：
+  - [x] 覆盖合法 payload、缺失 `header`、空 `elements`、非法 tag、字段转义。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_interactive_card_renderer.py'
 ```
 
-- [ ] 阻塞项：
-  - [ ] 飞书 interactive card 的最终字段边界需要进一步验证。
-- [ ] 解阻条件：
-  - [ ] 首期只支持设计文档中已冻结的组件子集：`header/div/fields/hr/note/action`。
+- [x] 阻塞项：
+  - [x] 飞书 interactive card 的最终字段边界需要进一步验证。
+- [x] 解阻条件：
+  - [x] 首期只支持设计文档中已冻结的组件子集：`header/div/fields/hr/note/action`。
 
 ### P4.2 实现飞书投递 runtime
 
-- [ ] 代码目标：
-  - [ ] 新增 `lark_delivery_runtime.py`。
-  - [ ] 负责序列化 interactive card、生成幂等键、执行 `--dry-run`、调用 `active-lark` raw API fallback。
-  - [ ] 记录发送结果。
-- [ ] 测试目标：
-  - [ ] 覆盖 dry-run、不合法 payload 拒发、幂等键生成、发送目标参数装配。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `lark_delivery_runtime.py`。
+  - [x] 负责序列化 interactive card、生成幂等键、执行 `--dry-run`、调用 `active-lark` raw API fallback。
+  - [x] 记录发送结果。
+- [x] 测试目标：
+  - [x] 覆盖 dry-run、不合法 payload 拒发、幂等键生成、发送目标参数装配。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_lark_delivery_runtime.py'
 ```
 
-- [ ] 阻塞项：
-  - [ ] 飞书发送命令的最终封装方式未定。
-- [ ] 解阻条件：
-  - [ ] 首期直接调用 raw API fallback，后续可替换底层实现但保持 runtime 接口不变。
+- [x] 阻塞项：
+  - [x] 飞书发送命令的最终封装方式未定。
+- [x] 解阻条件：
+  - [x] 首期直接调用 raw API fallback，后续可替换底层实现但保持 runtime 接口不变。
 
 ### P4.3 实现 LLM 摘要 runtime
 
-- [ ] 代码目标：
-  - [ ] 新增 `llm_summary_runtime.py`。
-  - [ ] 仅在命中后按批量调用，输出 `symptom_summary/impact_summary`。
-  - [ ] 提供不可用时的降级逻辑。
-- [ ] 测试目标：
-  - [ ] 覆盖无命中不调用、合法 schema、字段缺失降级、异常降级。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `llm_summary_runtime.py`。
+  - [x] 仅在命中后按批量调用，输出 `symptom_summary/impact_summary`。
+  - [x] 提供不可用时的降级逻辑。
+- [x] 测试目标：
+  - [x] 覆盖无命中不调用、合法 schema、字段缺失降级、异常降级。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_llm_summary_runtime.py'
 ```
 
-- [ ] 阻塞项：
-  - [ ] 首期 LLM 调用通道未定。
-- [ ] 解阻条件：
-  - [ ] 先抽象 runtime 接口并用 stub/mocked provider 完成测试。
+- [x] 阻塞项：
+  - [x] 首期 LLM 调用通道未定。
+- [x] 解阻条件：
+  - [x] 先抽象 runtime 接口并用 stub/mocked provider 完成测试。
 
 ## 9. P5 场景一接入
 

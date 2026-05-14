@@ -21,6 +21,8 @@ from jira_query_runtime import (  # noqa: E402
     compute_query_window,
     format_datetime,
 )
+from lark_delivery_runtime import LarkDeliveryRuntime  # noqa: E402
+from llm_summary_runtime import LLMSummaryRuntime  # noqa: E402
 from scenario_registry import ScenarioRegistry, ScenarioRegistryError, ScenarioSpec  # noqa: E402
 from task_store import DEFAULT_DATA_ROOT, TaskStore, TaskStoreError, read_json, write_json  # noqa: E402
 
@@ -62,24 +64,6 @@ class RunnerDependencies:
 class UnconfiguredJiraClient:
     def query(self, query: Any, window: QueryWindow, task: dict[str, Any]) -> list[Any]:
         raise RunnerError("jira_client is not configured")
-
-
-class NoopSummaryRuntime:
-    def summarize(self, matches: list[dict[str, Any]], task: dict[str, Any], scenario: ScenarioSpec) -> list[dict[str, Any]]:
-        return [{} for _ in matches]
-
-
-class DryRunDeliveryRuntime:
-    def deliver(
-        self,
-        cards: list[dict[str, Any]],
-        target: dict[str, Any],
-        *,
-        dry_run: bool = False,
-    ) -> dict[str, Any]:
-        if not dry_run:
-            raise RunnerError("delivery_runtime is not configured for real delivery")
-        return {"dry_run": True, "target": target, "card_count": len(cards), "sent_count": 0}
 
 
 def load_runtime_state(store: TaskStore, task_id: str) -> dict[str, Any]:
@@ -296,8 +280,8 @@ def build_default_dependencies(data_root: str | None = None) -> RunnerDependenci
         store=TaskStore(data_root or DEFAULT_DATA_ROOT),
         registry=ScenarioRegistry(),
         jira_client=UnconfiguredJiraClient(),
-        summary_runtime=NoopSummaryRuntime(),
-        delivery_runtime=DryRunDeliveryRuntime(),
+        summary_runtime=LLMSummaryRuntime(),
+        delivery_runtime=LarkDeliveryRuntime(),
     )
 
 

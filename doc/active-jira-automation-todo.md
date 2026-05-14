@@ -226,61 +226,61 @@ python -m unittest discover active-jira-automation/tests -p 'test_manage_tasks.p
 
 ### P3.1 实现查询窗口与检查点逻辑
 
-- [ ] 代码目标：
-  - [ ] 新增 `jira_query_runtime.py`。
-  - [ ] 实现 `last_checkpoint`、当前执行时间、回看窗口的计算。
-  - [ ] 支持无命中时仅更新检查点并退出。
-- [ ] 测试目标：
-  - [ ] 覆盖首次运行、正常续跑、回看窗口、防止漏数。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `jira_query_runtime.py`。
+  - [x] 实现 `last_checkpoint`、当前执行时间、回看窗口的计算。
+  - [x] 支持无命中时仅更新检查点并退出。
+- [x] 测试目标：
+  - [x] 覆盖首次运行、正常续跑、回看窗口、防止漏数。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_jira_query_runtime.py'
 ```
 
-- [ ] 阻塞项：
-  - [ ] 首次运行的默认起点未明确。
-- [ ] 解阻条件：
-  - [ ] 冻结规则：首次运行由任务创建时间或显式开始时间决定。
+- [x] 阻塞项：
+  - [x] 首次运行的默认起点未明确。
+- [x] 解阻条件：
+  - [x] 冻结规则：首次运行由任务创建时间或显式开始时间决定。
 
 ### P3.2 实现统一 runner 骨架
 
-- [ ] 代码目标：
-  - [ ] 新增 `run_automation_task.py`。
-  - [ ] 串起“读取任务 -> 读取场景 -> 查询 -> 去重 -> 按需调用 LLM -> 渲染 -> 发送 -> 回写结果”。
-  - [ ] 支持 `--dry-run`。
-- [ ] 测试目标：
-  - [ ] 覆盖无命中路径、命中路径、未知任务、未知场景、场景执行异常。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `run_automation_task.py`。
+  - [x] 串起“读取任务 -> 读取场景 -> 查询 -> 去重 -> 按需调用 LLM -> 渲染 -> 发送 -> 回写结果”。
+  - [x] 支持 `--dry-run`。
+- [x] 测试目标：
+  - [x] 覆盖无命中路径、命中路径、未知任务、未知场景、场景执行异常。
+- [x] 验收命令：
 
 ```sh
 python active-jira-automation/scripts/run_automation_task.py --help
 python -m unittest discover active-jira-automation/tests -p 'test_run_automation_task.py'
 ```
 
-- [ ] 阻塞项：
-  - [ ] LLM runtime 和 delivery runtime 的接口尚未固定。
-- [ ] 解阻条件：
-  - [ ] 先定义最小接口：`summarize(matches) -> summaries`，`deliver(cards, target) -> result`。
+- [x] 阻塞项：
+  - [x] LLM runtime 和 delivery runtime 的接口尚未固定。
+- [x] 解阻条件：
+  - [x] 先定义最小接口：`summarize(matches) -> summaries`，`deliver(cards, target) -> result`。
 
 ### P3.3 实现调度适配层骨架
 
-- [ ] 代码目标：
-  - [ ] 新增 `scheduler_adapter.py`。
-  - [ ] 定义 `create/pause/resume/delete/get_status` 统一接口。
-  - [ ] 首期提供 Openclaw 占位实现或 mock 实现。
-- [ ] 测试目标：
-  - [ ] 覆盖接口调用路径和错误封装，不要求首期真实连通 Openclaw。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `scheduler_adapter.py`。
+  - [x] 定义 `create/pause/resume/delete/get_status` 统一接口。
+  - [x] 首期提供 Openclaw 占位实现或 mock 实现。
+- [x] 测试目标：
+  - [x] 覆盖接口调用路径和错误封装，不要求首期真实连通 Openclaw。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_scheduler_adapter.py'
 ```
 
-- [ ] 阻塞项：
-  - [ ] Openclaw 真接口未冻结。
-- [ ] 解阻条件：
-  - [ ] 先在适配层抽象接口，真实联调延后到 P6。
+- [x] 阻塞项：
+  - [x] Openclaw 真接口未冻结。
+- [x] 解阻条件：
+  - [x] 先在适配层抽象接口，真实联调延后到 P6。
 
 ## 8. P4 Interactive 卡片投递链路
 

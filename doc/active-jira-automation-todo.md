@@ -295,15 +295,15 @@ python -m unittest discover active-jira-automation/tests -p 'test_run_automation
 
 ### P5.1 实现通用提醒卡片模板
 
-- [ ] 代码目标：
-  - [ ] 新增 `templates/lark_jira_query_alert_card_v1.py`。
-  - [ ] 按场景文档输出固定结构的 interactive card JSON。
-  - [ ] 标题使用任务名或 `Jira 查询命中提醒`。
-  - [ ] 支持字段长度裁剪与空值兜底。
-  - [ ] 支持基于 Severity/Priority 或任务配置选择 header 颜色。
-- [ ] 测试目标：
-  - [ ] 覆盖完整字段、缺失责任人、缺失版本、超长 Summary、LLM 摘要缺失、无优先级。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `templates/lark_jira_query_alert_card_v1.py`。
+  - [x] 按场景文档输出固定结构的 interactive card JSON。
+  - [x] 标题使用任务名或 `Jira 查询命中提醒`。
+  - [x] 支持字段长度裁剪与空值兜底。
+  - [x] 支持基于 Severity/Priority 或任务配置选择 header 颜色。
+- [x] 测试目标：
+  - [x] 覆盖完整字段、缺失责任人、缺失版本、超长 Summary、LLM 摘要缺失、无优先级。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_lark_jira_query_alert_card_v1.py'
@@ -311,13 +311,13 @@ python -m unittest discover active-jira-automation/tests -p 'test_lark_jira_quer
 
 ### P5.2 保留 interactive 卡片公共校验
 
-- [ ] 代码目标：
-  - [ ] 复用 `renderers/interactive_card_renderer.py`。
-  - [ ] 保持允许组件白名单：`header/div/fields/hr/note/action`。
-  - [ ] 不让 LLM 直接输出整张卡片 JSON。
-- [ ] 测试目标：
-  - [ ] 现有卡片校验测试继续通过。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 复用 `renderers/interactive_card_renderer.py`。
+  - [x] 保持允许组件白名单：`header/div/fields/hr/note/action`。
+  - [x] 不让 LLM 直接输出整张卡片 JSON。
+- [x] 测试目标：
+  - [x] 现有卡片校验测试继续通过。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_interactive_card_renderer.py'

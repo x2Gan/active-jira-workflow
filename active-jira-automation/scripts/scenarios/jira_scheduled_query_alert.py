@@ -13,8 +13,8 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from jira_query_runtime import QueryWindow, build_final_jql, match_identity_for  # noqa: E402
-from renderers.interactive_card_renderer import build_card, text_node  # noqa: E402
 from scenario_registry import ScenarioSpec  # noqa: E402
+from templates.lark_jira_query_alert_card_v1 import render_cards  # noqa: E402
 
 
 SCENARIO_KEY = "jira-scheduled-query-alert"
@@ -172,57 +172,8 @@ def match_identity(match: dict[str, Any], task: dict[str, Any]) -> str:
     return match_identity_for(task, match)
 
 
-def _summary_for(index: int, summaries: Any) -> dict[str, Any]:
-    if isinstance(summaries, list) and index < len(summaries) and isinstance(summaries[index], dict):
-        return summaries[index]
-    if isinstance(summaries, dict):
-        return summaries
-    return {}
-
-
 def renderer(matches: list[dict[str, Any]], summaries: Any, task: dict[str, Any]) -> list[dict[str, Any]]:
-    cards: list[dict[str, Any]] = []
-    title = str(task.get("task_name") or "Jira 查询命中提醒")
-    for index, match in enumerate(matches):
-        summary = _summary_for(index, summaries)
-        elements = [
-            {
-                "tag": "div",
-                "text": text_node(f"**{match.get('key', 'UNKNOWN')}**\n{match.get('summary', '未命名 Jira')}", max_length=500),
-            },
-            {
-                "tag": "div",
-                "fields": [
-                    {"is_short": True, "text": text_node(f"**状态**\n{match.get('status', '未设置')}")},
-                    {"is_short": True, "text": text_node(f"**优先级**\n{match.get('priority', '未设置')}")},
-                    {"is_short": True, "text": text_node(f"**Severity**\n{match.get('severity', '未设置')}")},
-                    {"is_short": True, "text": text_node(f"**负责人**\n{match.get('assignee', '未设置')}")},
-                ],
-            },
-            {
-                "tag": "div",
-                "text": text_node(
-                    f"**命中原因**\n{summary.get('match_reason') or match.get('match_reason') or '命中当前查询条件'}",
-                    max_length=500,
-                ),
-            },
-        ]
-        url = match.get("url")
-        if isinstance(url, str) and url:
-            elements.append(
-                {
-                    "tag": "action",
-                    "actions": [
-                        {
-                            "tag": "button",
-                            "text": {"tag": "plain_text", "content": "打开 Jira"},
-                            "url": url,
-                        }
-                    ],
-                }
-            )
-        cards.append(build_card(title, elements, template="red"))
-    return cards
+    return render_cards(matches, summaries, task)
 
 
 def get_scenario_spec() -> ScenarioSpec:

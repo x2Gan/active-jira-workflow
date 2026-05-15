@@ -58,8 +58,8 @@ DEFAULTING_RULES = {
 
 LLM_OUTPUT_SCHEMA = {
     "match_reason": "string",
-    "risk_summary": "string",
-    "suggested_next_step": "string",
+    "problem_summary": "string",
+    "risk_assessment": "string",
 }
 
 
@@ -138,6 +138,17 @@ def normalize_issue(raw: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]
     status = _field(fields, task, "status", "status")
     assignee = _field(fields, task, "assignee", "assignee")
     reporter = _field(fields, task, "reporter", "reporter")
+    team = _field(
+        fields,
+        task,
+        "team",
+        "team",
+        "Team",
+        "team.name",
+        "归属Team",
+        "归属团队",
+        "customfield_11801",
+    )
 
     return {
         "key": key,
@@ -152,6 +163,8 @@ def normalize_issue(raw: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]
         "priority": _display_name(priority),
         "severity": _display_name(severity),
         "fix_versions": _names(_field(fields, task, "fix_versions", "fixVersions", "fix_versions")),
+        "affects_versions": _names(_field(fields, task, "affects_versions", "versions", "affectsVersions", "affects_versions")),
+        "team": _display_name(team),
         "labels": _names(_field(fields, task, "labels", "labels")),
         "components": _names(_field(fields, task, "components", "components")),
         "match_reason": str(_first_value(raw.get("match_reason"), task.get("filter_prompt"), fallback="命中当前查询条件")),

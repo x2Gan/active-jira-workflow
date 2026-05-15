@@ -15,6 +15,7 @@
 | 项目规则化建单 | 按 Active 项目规则补齐缺陷 Jira 的 Severity、Products、自定义字段、标签、组件等信息。 |
 | 飞书文档发布 | 通过官方 Lark CLI 将本地 Markdown 报告创建或更新为飞书云文档。 |
 | 飞书机器人推送 | 为目标群聊授权文档查看权限，并通过机器人发送报告链接，支持 `--dry-run` 预览外部副作用。 |
+| Jira 自动化提醒 | 通过 `active-jira-automation` 创建 `jira-scheduled-query-alert` 任务，把用户确认的 `base_jql` 按 `window_mode` 定时查询并推送飞书 interactive 卡片。 |
 | 安装与更新 | 一键安装源码、jira-cli、Skills、本地管理命令；Lark CLI 作为可选增强能力接入。 |
 
 ## 常用入口速查
@@ -28,7 +29,66 @@
 | 生成长期未处理 Jira 报告 | `python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w` |
 | 生成报告并发布到飞书 | `python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --dry-run` |
 | 发布已有报告并推送到群聊 | `python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --report-input reports/geneva-stale-jira.md --chat-id oc_xxx --grant-chat-view --dry-run` |
+| 创建 Jira 查询提醒任务 | `python active-jira-automation/scripts/manage_tasks.py create --scenario jira-scheduled-query-alert --task-name "Geneva P0 Bug Alert" --project GENEVA --filter-prompt "每小时查询一次 GENEVA 新增的 P0 Bug" --base-jql 'project = GENEVA AND issuetype = Bug AND "Severity" = P0' --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"issuetype","op":"=","value":"Bug"},{"field":"Severity","op":"=","value":"P0"}]}' --window-mode created --schedule-type recurring --schedule-expr '0 * * * *' --target-chat-id oc_xxx` |
 | Lark CLI 环境检查 | `sh lark-cli.sh doctor` |
+
+## active-jira-automation 通用查询提醒
+
+`active-jira-automation` 用于把用户确认过的 Jira 筛选条件保存为自动化任务。首期场景为 `jira-scheduled-query-alert`：Agent 先把自然语言筛选目标整理成可审计的 `query_spec` 和不含运行窗口的 `base_jql`，确认 `window_mode`、调度和飞书群后，再由 runner 定时查询并发送 interactive 卡片。
+
+创建任务前必须确认：
+
+- `base_jql`：只包含业务筛选条件，不包含运行期 created/updated 窗口。
+- `window_mode`：`created` 表示新增提醒，`updated` 表示更新提醒，`snapshot` 表示每次检查当前仍命中的存量数据。
+- `target_chat_id`：飞书群稳定 ID，例如 `oc_xxx`。
+
+P0 Bug 样例：
+
+```bash
+python active-jira-automation/scripts/manage_tasks.py create \
+  --scenario jira-scheduled-query-alert \
+  --task-name "Geneva P0 Bug Alert" \
+  --project GENEVA \
+  --filter-prompt "每小时查询一次 GENEVA 新增的 P0 Bug" \
+  --base-jql 'project = GENEVA AND issuetype = Bug AND "Severity" = P0' \
+  --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"issuetype","op":"=","value":"Bug"},{"field":"Severity","op":"=","value":"P0"}]}' \
+  --window-mode created \
+  --schedule-type recurring \
+  --schedule-expr '0 * * * *' \
+  --target-chat-id oc_xxx
+```
+
+新增标签样例：
+
+```bash
+python active-jira-automation/scripts/manage_tasks.py create \
+  --scenario jira-scheduled-query-alert \
+  --task-name "Customer Escalation Label Alert" \
+  --project GENEVA \
+  --filter-prompt "每天上午 10 点提醒本周新建且带 customer-escalation 标签的 Jira" \
+  --base-jql 'project = GENEVA AND labels = customer-escalation' \
+  --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"labels","op":"=","value":"customer-escalation"}]}' \
+  --window-mode created \
+  --schedule-type recurring \
+  --schedule-expr '0 10 * * *' \
+  --target-chat-id oc_xxx
+```
+
+更新未分配样例：
+
+```bash
+python active-jira-automation/scripts/manage_tasks.py create \
+  --scenario jira-scheduled-query-alert \
+  --task-name "Unassigned Updated Issues Alert" \
+  --project GENEVA \
+  --filter-prompt "每 30 分钟提醒最近有更新且 assignee 为空的 Jira" \
+  --base-jql 'project = GENEVA AND assignee IS EMPTY' \
+  --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"assignee","op":"IS","value":"EMPTY"}]}' \
+  --window-mode updated \
+  --schedule-type recurring \
+  --schedule-expr '*/30 * * * *' \
+  --target-chat-id oc_xxx
+```
 
 ## 仓库摘要
 
@@ -42,6 +102,7 @@ VERSION                            仓库版本
 active-jira/SKILL.md               Agent Skill 主说明
 active-jira-report/SKILL.md        场景化报告与规则化建单 Skill
 active-lark/SKILL.md               飞书/Lark CLI 通用能力 Skill
+active-jira-automation/SKILL.md    Jira 自动化任务与定时查询提醒 Skill
 active-jira/references/            jira-cli 用法参考
 active-jira/scripts/               场景化查询脚本
 active-jira/agents/openai.yaml     Skill 展示信息
@@ -51,13 +112,14 @@ active-jira-report/agents/openai.yaml Skill 展示信息
 active-lark/references/            lark-cli 用法与快捷命令参考
 active-lark/scripts/               飞书文档发布辅助脚本
 active-lark/agents/openai.yaml     Skill 展示信息
+active-jira-automation/scripts/    自动化任务管理、runner、场景和卡片模板
 reports/                           本地生成报告目录，默认不提交 Git
 ```
 
 安装后会得到三部分能力：
 
 - 源码目录：默认安装到当前目录下的 `active-jira-workflow/`。
-- Skill 软链接：默认同时安装 `active-jira`、`active-jira-report` 和 `active-lark` 到 Codex 或 GitHub Copilot 项目的 skills 目录。
+- Skill 软链接：默认同时安装 `active-jira`、`active-jira-report`、`active-lark` 和 `active-jira-automation` 到 Codex 或 GitHub Copilot 项目的 skills 目录。
 - 本地管理命令：默认安装为 `~/.local/bin/active-jira`，用于后续更新和查看版本。
 
 ## 设计原则
@@ -135,7 +197,7 @@ sh -c "$(gh api --method GET -H 'Accept: application/vnd.github.raw+json' /repos
 2. 检查本地是否存在 `jira` 命令。
 3. 如果缺少 `jira`，在 Linux 环境下通过 `jira-cli.sh` 安装 `ankitpokhrel/jira-cli`。
 4. 执行 `jira init`，生成 JiraCLI 配置。
-5. 将 `active-jira`、`active-jira-report` 和 `active-lark` 三个 Skill 软链接到目标 Agent 的 skills 目录。
+5. 将 `active-jira`、`active-jira-report`、`active-lark` 和 `active-jira-automation` 四个 Skill 软链接到目标 Agent 的 skills 目录。
 6. 安装本地管理命令 `active-jira`。
 
 安装流程末尾会把 Lark CLI 作为可选增强能力提示出来，默认不会安装。它用于后续把生成的 Jira Markdown 报告发布为飞书云文档，并在确认后发送给指定用户或群。

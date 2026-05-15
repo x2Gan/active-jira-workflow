@@ -7,9 +7,15 @@ import re
 from typing import Any, Protocol
 
 
-SUMMARY_FIELDS = ("symptom_summary", "impact_summary")
+SUMMARY_FIELDS = ("match_reason", "problem_summary", "risk_assessment")
+SUMMARY_ALIASES = {
+    "problem_summary": ("problem_summary", "symptom_summary"),
+    "risk_assessment": ("risk_assessment", "risk_summary", "impact_summary"),
+    "match_reason": ("match_reason",),
+}
 DEFAULT_SYMPTOM_FALLBACK = "待人工补充"
 DEFAULT_IMPACT_FALLBACK = "待人工确认影响范围"
+DEFAULT_MATCH_REASON_FALLBACK = "命中任务筛选条件"
 
 
 class SummaryProvider(Protocol):
@@ -32,8 +38,9 @@ def first_sentence(value: Any) -> str:
 def fallback_summary(match: dict[str, Any]) -> dict[str, str]:
     symptom = first_sentence(match.get("summary")) or first_sentence(match.get("description")) or DEFAULT_SYMPTOM_FALLBACK
     return {
-        "symptom_summary": symptom,
-        "impact_summary": DEFAULT_IMPACT_FALLBACK,
+        "match_reason": str(match.get("match_reason") or DEFAULT_MATCH_REASON_FALLBACK),
+        "problem_summary": symptom,
+        "risk_assessment": DEFAULT_IMPACT_FALLBACK,
     }
 
 
@@ -42,7 +49,11 @@ def normalize_provider_item(item: Any, fallback: dict[str, str]) -> dict[str, st
         return fallback
     normalized: dict[str, str] = {}
     for field in SUMMARY_FIELDS:
-        value = item.get(field)
+        value = None
+        for alias in SUMMARY_ALIASES[field]:
+            value = item.get(alias)
+            if isinstance(value, str) and value.strip():
+                break
         if isinstance(value, str) and value.strip():
             normalized[field] = value.strip()
         else:

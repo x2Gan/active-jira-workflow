@@ -328,13 +328,13 @@ python -m unittest discover active-jira-automation/tests -p 'test_lark_delivery_
 
 ### P6.1 更新 Agent 创建任务工作流
 
-- [ ] 代码目标：
-  - [ ] 在 `SKILL.md` 中描述追问顺序：筛选目标、项目、窗口语义、调度、群组、通知策略。
-  - [ ] 要求 Agent 生成 `base_jql` 后必须展示确认摘要。
-  - [ ] 明确用户确认前不得创建调度器。
-- [ ] 测试目标：
-  - [ ] 文档能支撑首次试用，不依赖口头说明。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 在 `SKILL.md` 中描述追问顺序：筛选目标、项目、窗口语义、调度、群组、通知策略。
+  - [x] 要求 Agent 生成 `base_jql` 后必须展示确认摘要。
+  - [x] 明确用户确认前不得创建调度器。
+- [x] 测试目标：
+  - [x] 文档能支撑首次试用，不依赖口头说明。
+- [x] 验收命令：
 
 ```sh
 rg -n "追问|确认摘要|base_jql|window_mode|target_chat" active-jira-automation/SKILL.md
@@ -342,12 +342,12 @@ rg -n "追问|确认摘要|base_jql|window_mode|target_chat" active-jira-automat
 
 ### P6.2 更新 README 或项目入口说明
 
-- [ ] 代码目标：
-  - [ ] 在 README 中新增 `active-jira-automation` 通用查询提醒能力说明。
-  - [ ] 提供至少 3 个样例：P0 Bug、新增标签、更新未分配。
-- [ ] 测试目标：
-  - [ ] 示例命令与实际 CLI 参数一致。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 在 README 中新增 `active-jira-automation` 通用查询提醒能力说明。
+  - [x] 提供至少 3 个样例：P0 Bug、新增标签、更新未分配。
+- [x] 测试目标：
+  - [x] 示例命令与实际 CLI 参数一致。
+- [x] 验收命令：
 
 ```sh
 rg -n "active-jira-automation|jira-scheduled-query-alert|base-jql|window-mode" README.md active-jira-automation/SKILL.md

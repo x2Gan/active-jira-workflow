@@ -16,7 +16,7 @@ SPEC.loader.exec_module(summary_runtime)
 
 
 class Scenario:
-    llm_output_schema = {"symptom_summary": "string", "impact_summary": "string"}
+    llm_output_schema = {"match_reason": "string", "problem_summary": "string", "risk_assessment": "string"}
 
 
 class Provider:
@@ -43,22 +43,33 @@ class LLMSummaryRuntimeTests(unittest.TestCase):
         self.assertEqual(provider.calls, 0)
 
     def test_valid_provider_schema_is_returned(self) -> None:
+        provider = Provider([{"match_reason": "命中", "problem_summary": "现象", "risk_assessment": "影响"}])
+        runtime = summary_runtime.LLMSummaryRuntime(provider)
+
+        result = runtime.summarize([{"summary": "fallback"}], {}, Scenario())
+
+        self.assertEqual(result, [{"match_reason": "命中", "problem_summary": "现象", "risk_assessment": "影响"}])
+        self.assertEqual(provider.calls, 1)
+
+    def test_legacy_provider_aliases_are_normalized(self) -> None:
         provider = Provider([{"symptom_summary": "现象", "impact_summary": "影响"}])
         runtime = summary_runtime.LLMSummaryRuntime(provider)
 
         result = runtime.summarize([{"summary": "fallback"}], {}, Scenario())
 
-        self.assertEqual(result, [{"symptom_summary": "现象", "impact_summary": "影响"}])
-        self.assertEqual(provider.calls, 1)
+        self.assertEqual(
+            result,
+            [{"match_reason": "命中任务筛选条件", "problem_summary": "现象", "risk_assessment": "影响"}],
+        )
 
     def test_missing_provider_fields_fall_back_per_field(self) -> None:
-        provider = Provider([{"symptom_summary": "现象"}])
+        provider = Provider([{"problem_summary": "现象"}])
         runtime = summary_runtime.LLMSummaryRuntime(provider)
 
         result = runtime.summarize([{"summary": "Jira summary. second sentence"}], {}, Scenario())
 
-        self.assertEqual(result[0]["symptom_summary"], "现象")
-        self.assertEqual(result[0]["impact_summary"], "待人工确认影响范围")
+        self.assertEqual(result[0]["problem_summary"], "现象")
+        self.assertEqual(result[0]["risk_assessment"], "待人工确认影响范围")
 
     def test_provider_exception_uses_fallbacks(self) -> None:
         provider = Provider(fail=True)
@@ -66,7 +77,16 @@ class LLMSummaryRuntimeTests(unittest.TestCase):
 
         result = runtime.summarize([{"description": "Description first. second"}], {}, Scenario())
 
-        self.assertEqual(result, [{"symptom_summary": "Description first.", "impact_summary": "待人工确认影响范围"}])
+        self.assertEqual(
+            result,
+            [
+                {
+                    "match_reason": "命中任务筛选条件",
+                    "problem_summary": "Description first.",
+                    "risk_assessment": "待人工确认影响范围",
+                }
+            ],
+        )
         self.assertEqual(provider.calls, 1)
 
     def test_without_provider_uses_summary_or_default_fallback(self) -> None:
@@ -74,7 +94,16 @@ class LLMSummaryRuntimeTests(unittest.TestCase):
 
         result = runtime.summarize([{"summary": ""}], {}, Scenario())
 
-        self.assertEqual(result, [{"symptom_summary": "待人工补充", "impact_summary": "待人工确认影响范围"}])
+        self.assertEqual(
+            result,
+            [
+                {
+                    "match_reason": "命中任务筛选条件",
+                    "problem_summary": "待人工补充",
+                    "risk_assessment": "待人工确认影响范围",
+                }
+            ],
+        )
 
 
 if __name__ == "__main__":

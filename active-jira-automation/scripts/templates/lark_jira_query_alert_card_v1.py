@@ -115,9 +115,8 @@ def render_card(match: dict[str, Any], summary: dict[str, Any], task: dict[str, 
     title = _text(task.get("task_name"), fallback=DEFAULT_TITLE)
     key = _text(match.get("key") or match.get("issue_key"), fallback="UNKNOWN")
     issue_summary = _text(match.get("summary"), fallback="未命名 Jira")
-    match_reason = _first(summary, match, ("match_reason", "symptom_summary"), "命中任务筛选条件")
-    risk_summary = _first(summary, match, ("risk_summary", "impact_summary"), issue_summary or "待人工确认影响范围")
-    suggested_next_step = _first(summary, match, ("suggested_next_step",), "请责任人确认处理计划")
+    problem_summary = _first(summary, match, ("problem_summary", "symptom_summary"), issue_summary)
+    risk_assessment = _first(summary, match, ("risk_assessment", "risk_summary", "impact_summary"), "待人工确认影响范围")
 
     elements: list[dict[str, Any]] = [
         {
@@ -133,31 +132,22 @@ def render_card(match: dict[str, Any], summary: dict[str, Any], task: dict[str, 
             "tag": "div",
             "fields": [
                 _field("Jira 链接", _jira_link(match), escape_value=False),
-                _field("命中时间", _format_time(match.get("matched_at") or match.get("updated_at") or match.get("created_at"))),
                 _field("创建时间", _format_time(match.get("created_at"))),
-                _field("更新时间", _format_time(match.get("updated_at"))),
                 _field("负责人", _text(match.get("assignee"), fallback="Unassigned")),
                 _field("Reporter", match.get("reporter")),
                 _field("优先级/Severity", _priority_text(match)),
                 _field("状态", match.get("status")),
-                _field("修复版本", match.get("fix_versions")),
-                _field("标签", match.get("labels")),
-                _field("组件", match.get("components")),
-            ],
-        },
-        {
-            "tag": "note",
-            "elements": [
-                text_node(f"命中原因：{match_reason}", tag="plain_text", max_length=ANALYSIS_MAX_LENGTH, escape=False),
+                _field("影响版本", match.get("affects_versions")),
+                _field("归属团队", match.get("team")),
             ],
         },
         {
             "tag": "div",
-            "text": text_node(f"**风险摘要**\n{safe_text(risk_summary)}", max_length=ANALYSIS_MAX_LENGTH, escape=False),
+            "text": text_node(f"**问题摘要**\n{safe_text(problem_summary)}", max_length=ANALYSIS_MAX_LENGTH, escape=False),
         },
         {
             "tag": "div",
-            "text": text_node(f"**建议下一步**\n{safe_text(suggested_next_step)}", max_length=ANALYSIS_MAX_LENGTH, escape=False),
+            "text": text_node(f"**风险评估**\n{safe_text(risk_assessment)}", max_length=ANALYSIS_MAX_LENGTH, escape=False),
         },
     ]
 

@@ -111,7 +111,7 @@ P0 对场景一涉及的关键字段做如下冻结：
 1. 无命中时不调用 LLM。
 2. 无命中时不生成卡片、不发送飞书消息。
 3. LLM 仅在命中后按批次调用。
-4. LLM 输出只允许场景 schema 中声明的受控字段；通用查询提醒场景首期为 `match_reason`、`risk_summary`、`suggested_next_step`。
+4. LLM 输出只允许场景 schema 中声明的受控字段；通用查询提醒场景首期为 `match_reason`、`problem_summary`、`risk_assessment`。
 5. 每个命中 Jira 首期单独发送一张 interactive 卡片。
 
 ## 3. P0 后仍保留为实现期确认项的事项

@@ -60,6 +60,14 @@ Recommended process:
 6. Show a confirmation summary before any write-side effect.
 7. Create the task definition and pass scheduling work to the scheduler adapter.
 
+P6 creation guardrails:
+
+- 追问顺序 must be: filter target, project scope, `window_mode`, schedule, `target_chat_id` or group name, then notification policy.
+- Build `query_spec` and `base_jql` during creation, but treat them as a proposal until the user accepts the confirmation summary.
+- The confirmation summary must be explicit enough that the user can audit the exact Jira scope, final `base_jql`, `window_mode`, schedule, `target_chat`, and message policy.
+- Do not call `manage_tasks.py create`, write task JSON, or create a scheduler job before the user confirms the summary.
+- If the user only provides a group name, resolve it to a stable `target_chat_id` before creation or stop and ask for the ID.
+
 For `jira-scheduled-query-alert`, collect or confirm in this order:
 
 - filter target: what Jira issues to match, including issue type, status, label, version, assignee, priority, severity, or other fields

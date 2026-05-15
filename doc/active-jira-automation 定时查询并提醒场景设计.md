@@ -217,10 +217,10 @@ ORDER BY <window_field> ASC
 | `config_schema` | `project/projects`、`filter_prompt`、`query_spec`、`base_jql`、`window_mode`、`schedule_type`、`schedule_expr`、`target_chat_id`、`notify_policy` |
 | `defaulting_rules` | 默认 `window_mode=created`、`lookback_minutes=5`、`notify_policy.mode=per_issue` |
 | `query_builder` | 将 `base_jql` 与运行窗口组合成最终 JQL |
-| `result_normalizer` | 归一化 Jira Key、Summary、URL、创建时间、更新时间、责任人、Reporter、Priority、Severity、Status、FixVersion、Labels、Components、命中原因 |
+| `result_normalizer` | 归一化 Jira Key、Summary、URL、创建时间、责任人、Reporter、Priority、Severity、Status、Affects Version、归属团队、命中原因 |
 | `match_identity` | 根据 `window_mode` 生成稳定去重键 |
 | `llm_policy` | `on-match-only` |
-| `llm_output_schema` | `match_reason`、`risk_summary`、`suggested_next_step` |
+| `llm_output_schema` | `match_reason`、`problem_summary`、`risk_assessment` |
 | `message_template_key` | `lark-jira-query-alert-card-v1` |
 | `renderer` | 输出飞书 interactive card JSON |
 | `delivery_policy` | 支持单条卡片、批量摘要、dry-run、幂等发送和单次上限 |
@@ -252,7 +252,7 @@ ORDER BY <window_field> ASC
 - LLM 可以参与创建期 JQL 草拟，但必须经用户确认后落盘。
 - 运行期不得让 LLM 修改 JQL、选择群组或决定是否发送。
 - 卡片骨架必须由代码生成，不能让 LLM 直接输出整张卡片 JSON。
-- LLM 只负责补充少量受控字段，例如“命中原因”“风险摘要”“建议下一步”。
+- LLM 只负责补充少量受控字段，例如“命中原因”“问题摘要”“风险评估”。
 
 ## 9. LLM 策略
 
@@ -274,15 +274,15 @@ ORDER BY <window_field> ASC
 每条 Jira 的 LLM 输出只允许包含：
 
 - `match_reason`
-- `risk_summary`
-- `suggested_next_step`
+- `problem_summary`
+- `risk_assessment`
 
 ### 9.4 降级策略
 
 - LLM 不可用时，仍然发送卡片。
 - `match_reason` 回退为“命中任务筛选条件”。
-- `risk_summary` 回退为 Jira Summary 或 Description 前 1 句。
-- `suggested_next_step` 回退为“请责任人确认处理计划”。
+- `problem_summary` 回退为 Jira Summary 或 Description 前 1 句。
+- `risk_assessment` 回退为“待人工确认影响范围”。
 
 ## 10. 飞书 interactive 卡片模板设计
 
@@ -335,7 +335,14 @@ ORDER BY <window_field> ASC
           "is_short": true,
           "text": {
             "tag": "lark_md",
-            "content": "**命中时间**\\n2026-05-15 14:18"
+            "content": "**创建时间**\\n2026-05-15 14:18"
+          }
+        },
+        {
+          "is_short": true,
+          "text": {
+            "tag": "lark_md",
+            "content": "**归属团队**\\n质量平台"
           }
         }
       ]
@@ -350,9 +357,8 @@ ORDER BY <window_field> ASC
 | --- | --- |
 | 告警标题 | `header.template` + `header.title`，模板颜色可按 `severity/priority` 或任务配置决定 |
 | Jira Key 与 Summary | `div.text` |
-| Jira 链接 / 创建时间 / 更新时间 / 责任人 / 优先级 / 状态 / 版本 / 标签 | `div.fields` |
-| 命中规则摘要 | `note.elements` 或 `div.text` |
-| 智能分析摘要 | 单独 `div.text` |
+| Jira 链接 / 创建时间 / 责任人 / Reporter / 优先级 / 状态 / 影响版本 / 归属团队 | `div.fields` |
+| 问题摘要 / 风险评估 | 单独 `div.text` |
 | 打开 Jira | 可选 `action.actions[].url` |
 
 ### 10.4 字段兜底
@@ -364,17 +370,14 @@ ORDER BY <window_field> ASC
 | Summary | Jira | 截断到固定长度 |
 | Jira URL | Jira 基础地址 + key | 无法拼接时退化为 key |
 | 创建时间 | Jira | `未设置` |
-| 更新时间 | Jira | `未设置` |
-| 命中时间 | runner | 本地时区格式化 |
 | 责任人 | Jira | `Unassigned` |
 | Reporter | Jira | `未设置` |
 | 优先级/Severity | Jira | 优先 Severity，缺失时回退 Priority，再缺失为 `未设置` |
 | 状态 | Jira | `未设置` |
-| 修复版本 | Jira | `未设置` |
-| 标签 / 组件 | Jira | `未设置` |
-| 命中原因 | LLM 或规则摘要 | `命中任务筛选条件` |
-| 风险摘要 | LLM 或规则摘要 | Jira Summary 或 `待人工确认影响范围` |
-| 建议下一步 | LLM 或规则摘要 | `请责任人确认处理计划` |
+| 影响版本 | Jira | `未设置` |
+| 归属团队 | Jira | `未设置` |
+| 问题摘要 | LLM 或规则摘要 | Jira Summary 或 Description 前 1 句 |
+| 风险评估 | LLM 或规则摘要 | `待人工确认影响范围` |
 
 ## 11. 场景代码接入建议
 

@@ -34,7 +34,8 @@ def match(**overrides: object) -> dict[str, object]:
         "priority": "High",
         "severity": "P1",
         "status": "Open",
-        "fix_versions": "2026.05",
+        "affects_versions": "2026.04",
+        "team": "Payments",
         "labels": "customer-escalation",
         "components": "Checkout",
     }
@@ -69,7 +70,7 @@ class LarkJiraQueryAlertCardV1Tests(unittest.TestCase):
     def test_render_complete_fields_as_valid_interactive_card(self) -> None:
         cards = template.render_cards(
             [match()],
-            [{"match_reason": "Matches escalation filter", "risk_summary": "Release risk", "suggested_next_step": "Assign owner"}],
+            [{"match_reason": "Matches escalation filter", "problem_summary": "LLM problem preview", "risk_assessment": "Release risk"}],
             task(),
         )
 
@@ -81,23 +82,31 @@ class LarkJiraQueryAlertCardV1Tests(unittest.TestCase):
         self.assertIn("DEMO-1", text)
         self.assertIn("Customer escalation blocks release", text)
         self.assertIn("[DEMO-1](https://jira.example.com/browse/DEMO-1)", text)
-        self.assertIn("2026-05-14 09:00 UTC", text)
+        self.assertIn("2026-05-14 08:30 UTC", text)
+        self.assertNotIn("命中时间", text)
+        self.assertNotIn("更新时间", text)
+        self.assertNotIn("标签", text)
+        self.assertNotIn("组件", text)
         self.assertIn("Alice", text)
         self.assertIn("P1", text)
-        self.assertIn("Checkout", text)
+        self.assertIn("Payments", text)
+        self.assertIn("2026.04", text)
+        self.assertIn("LLM problem preview", text)
         self.assertIn("Release risk", text)
-        self.assertIn("Assign owner", text)
+        self.assertNotIn("建议下一步", text)
+        self.assertNotIn("命中原因", text)
+        self.assertNotIn("修复版本", text)
 
     def test_missing_assignee_version_and_priority_use_fallbacks(self) -> None:
         card = template.render_cards(
-            [match(assignee="", fix_versions="", priority="", severity="")],
+            [match(assignee="", affects_versions="", priority="", severity="")],
             [{"match_reason": "Matches filter"}],
             task(),
         )[0]
 
         text = card_text(card)
         self.assertIn("Unassigned", text)
-        self.assertIn("**修复版本**\n未设置", text)
+        self.assertIn("**影响版本**\n未设置", text)
         self.assertIn("**优先级/Severity**\n未设置", text)
         self.assertEqual(card["header"]["template"], "blue")
 
@@ -112,9 +121,12 @@ class LarkJiraQueryAlertCardV1Tests(unittest.TestCase):
         card = template.render_cards([match(match_reason="Rule matched")], [], task())[0]
 
         text = card_text(card)
-        self.assertIn("命中原因：Rule matched", text)
+        self.assertNotIn("命中原因", text)
+        self.assertIn("**问题摘要**", text)
         self.assertIn("Customer escalation blocks release", text)
-        self.assertIn("请责任人确认处理计划", text)
+        self.assertIn("**风险评估**", text)
+        self.assertIn("待人工确认影响范围", text)
+        self.assertNotIn("建议下一步", text)
 
     def test_no_priority_or_severity_uses_neutral_color(self) -> None:
         card = template.render_cards([match(priority="", severity="")], [], task())[0]

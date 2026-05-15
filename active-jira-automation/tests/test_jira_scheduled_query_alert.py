@@ -103,7 +103,9 @@ class JiraScheduledQueryAlertTests(unittest.TestCase):
                     "reporter": {"displayName": "Bob"},
                     "priority": {"name": "High"},
                     "customfield_10401": {"value": "P1"},
+                    "customfield_11801": {"value": "Payments"},
                     "fixVersions": [{"name": "2026.05"}],
+                    "versions": [{"name": "2026.04"}],
                     "labels": ["customer-escalation"],
                     "components": [{"name": "Checkout"}],
                 },
@@ -119,7 +121,9 @@ class JiraScheduledQueryAlertTests(unittest.TestCase):
         self.assertEqual(normalized[0]["reporter"], "Bob")
         self.assertEqual(normalized[0]["priority"], "High")
         self.assertEqual(normalized[0]["severity"], "P1")
+        self.assertEqual(normalized[0]["team"], "Payments")
         self.assertEqual(normalized[0]["fix_versions"], "2026.05")
+        self.assertEqual(normalized[0]["affects_versions"], "2026.04")
         self.assertEqual(normalized[0]["labels"], "customer-escalation")
         self.assertEqual(normalized[0]["components"], "Checkout")
         self.assertEqual(normalized[0]["url"], "https://jira.example.com/browse/DEMO-1")

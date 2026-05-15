@@ -11,7 +11,7 @@
 本文件是 P0 的正式确认记录，供以下文档引用：
 
 - [active-jira-automation 框架能力设计](./active-jira-automation%20框架能力设计.md)
-- [active-jira-automation 定时查询P0并提醒场景设计](./active-jira-automation%20定时查询P0并提醒场景设计.md)
+- [active-jira-automation 定时查询并提醒场景设计](./active-jira-automation%20定时查询并提醒场景设计.md)
 - [active-jira-automation 专项 TODO](./active-jira-automation-todo.md)
 
 ## 2. P0 已冻结结论
@@ -22,7 +22,9 @@ P0 冻结以下边界，不再在首期实现阶段反复调整：
 
 1. `active-jira-automation` 只承接自动化任务框架能力：任务管理、场景接入、统一 runner、检查点、去重、LLM 摘要、飞书 interactive 卡片投递。
 2. `active-jira-automation` 不重复承接通用 Jira 字段探测、JQL 教学、飞书认证或通用通讯录能力。
-3. 首期 MVP 只接入一个场景：`new-p0-bug-alert`。
+3. 首期 MVP 只接入一个场景：`jira-scheduled-query-alert`。
+   - 该结论取代早期“仅接入 `new-p0-bug-alert`”的理解。
+   - P0 Bug 仅作为通用查询提醒场景的样例筛选条件。
 4. 后续新场景必须按“场景子能力 / 子方案”形式接入框架，不允许复制一套新的 runner 或发送链路。
 
 ### 2.2 Openclaw 调度契约冻结
@@ -109,7 +111,7 @@ P0 对场景一涉及的关键字段做如下冻结：
 1. 无命中时不调用 LLM。
 2. 无命中时不生成卡片、不发送飞书消息。
 3. LLM 仅在命中后按批次调用。
-4. LLM 输出只允许 `symptom_summary` 与 `impact_summary`。
+4. LLM 输出只允许场景 schema 中声明的受控字段；通用查询提醒场景首期为 `match_reason`、`risk_summary`、`suggested_next_step`。
 5. 每个命中 Jira 首期单独发送一张 interactive 卡片。
 
 ## 3. P0 后仍保留为实现期确认项的事项
@@ -126,7 +128,7 @@ P0 对场景一涉及的关键字段做如下冻结：
 本次 P0 设计冻结与外部契约确认，视为以下事项已完成：
 
 1. 框架公共能力边界已经固定。
-2. 首期只接入 `new-p0-bug-alert` 已固定。
+2. 首期只接入 `jira-scheduled-query-alert` 已固定。
 3. 调度适配层的框架侧接口已经固定。
 4. 飞书 interactive 卡片首期发送路径已经固定为 raw API fallback。
 5. Jira 关键字段的首期读取契约已经固定。

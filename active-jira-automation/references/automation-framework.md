@@ -18,7 +18,7 @@ Keep these boundaries stable:
 
 Current MVP scope:
 
-- one supported scenario: `new-p0-bug-alert`
+- one supported scenario: `jira-scheduled-query-alert`
 - one shared runner
 - one scheduler adapter contract
 - one interactive card delivery contract

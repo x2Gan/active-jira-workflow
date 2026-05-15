@@ -8,7 +8,7 @@
 
 - 本文档负责框架公共能力设计。
 - 场景子文档只负责描述单个场景的业务规则、参数、模板和接入映射。
-- 当前首个场景子文档见：[active-jira-automation 定时查询P0并提醒场景设计](./active-jira-automation%20定时查询P0并提醒场景设计.md)。
+- 当前首个场景子文档见：[active-jira-automation 定时查询并提醒场景设计](./active-jira-automation%20定时查询并提醒场景设计.md)。
 - P0 设计冻结与外部契约确认见：[active-jira-automation P0 设计冻结与外部契约确认](./active-jira-automation%20P0设计冻结与外部契约确认.md)。
 
 后续新增场景时，均应以“子能力 / 子方案”的形式接入本框架，而不是在各自文档中重复定义调度、检查点、去重、投递、审计等公共能力。
@@ -151,7 +151,7 @@
 | --- | --- | --- |
 | `task_id` | 任务唯一 ID，创建后稳定不变 | 是 |
 | `task_name` | 用户可读名称 | 是 |
-| `scenario_key` | 场景标识，例如 `new-p0-bug-alert` | 是 |
+| `scenario_key` | 场景标识，例如 `jira-scheduled-query-alert` | 是 |
 | `project` | Jira 项目 Key | 是 |
 | `query_rule` | 结构化查询规则 | 是 |
 | `schedule_type` | `recurring` 或 `once` | 是 |
@@ -317,14 +317,14 @@ active-jira-automation/
     renderers/
       interactive_card_renderer.py
     templates/
-      lark_p0_bug_card_v1.py
+      lark_jira_query_alert_card_v1.py
     scenarios/
-      new_p0_bug_alert.py
+      jira_scheduled_query_alert.py
   tests/
     test_manage_tasks.py
     test_run_automation_task.py
     test_interactive_card_renderer.py
-    test_new_p0_bug_alert.py
+    test_jira_scheduled_query_alert.py
 ```
 
 含义说明：
@@ -340,7 +340,7 @@ active-jira-automation/
 
 | 场景 | `scenario_key` | 状态 | 子文档 |
 | --- | --- | --- | --- |
-| 新增 P0 BUG Jira 定时提醒 | `new-p0-bug-alert` | 规划中 | [active-jira-automation 定时查询P0并提醒场景设计](./active-jira-automation%20定时查询P0并提醒场景设计.md) |
+| Jira 定时查询并提醒 | `jira-scheduled-query-alert` | 规划中 | [active-jira-automation 定时查询并提醒场景设计](./active-jira-automation%20定时查询并提醒场景设计.md) |
 
 建议后续可扩展的同类场景包括：
 
@@ -392,4 +392,4 @@ P0 之后仍保留为实现期确认项的事项：
 - 不重复实现检查点、去重、日志和审计
 - 后续新增场景时只需要增加场景接入实现和子文档
 
-首个场景的详细设计见：[active-jira-automation 定时查询P0并提醒场景设计](./active-jira-automation%20定时查询P0并提醒场景设计.md)。
+首个场景的详细设计见：[active-jira-automation 定时查询并提醒场景设计](./active-jira-automation%20定时查询并提醒场景设计.md)。

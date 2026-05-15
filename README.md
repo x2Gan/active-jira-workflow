@@ -15,7 +15,7 @@
 | 项目规则化建单 | 按 Active 项目规则补齐缺陷 Jira 的 Severity、Products、自定义字段、标签、组件等信息。 |
 | 飞书文档发布 | 通过官方 Lark CLI 将本地 Markdown 报告创建或更新为飞书云文档。 |
 | 飞书机器人推送 | 为目标群聊授权文档查看权限，并通过机器人发送报告链接，支持 `--dry-run` 预览外部副作用。 |
-| Jira 自动化提醒 | 通过 `active-jira-automation` 创建 `jira-scheduled-query-alert` 任务，把用户确认的 `base_jql` 按 `window_mode` 定时查询并推送飞书 interactive 卡片。 |
+| Jira 自动化提醒 | 通过 OpenClaw 会话调用 `active-jira-automation`，引导生成并确认 `query_spec`、`base_jql`、`window_mode` 和定时配置，再由 OpenClaw 原生定时机制执行共享脚本并推送飞书 interactive 卡片。 |
 | 安装与更新 | 一键安装源码、jira-cli、Skills、本地管理命令；Lark CLI 作为可选增强能力接入。 |
 
 ## 常用入口速查
@@ -29,74 +29,43 @@
 | 生成长期未处理 Jira 报告 | `python active-jira-report/scripts/generate_stale_jira_report.py --project GENEVA --age 1w` |
 | 生成报告并发布到飞书 | `python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --dry-run` |
 | 发布已有报告并推送到群聊 | `python active-jira-report/scripts/publish_stale_jira_report_to_lark.py --project GENEVA --age 1w --report-input reports/geneva-stale-jira.md --chat-id oc_xxx --grant-chat-view --dry-run` |
-| 创建 Jira 查询提醒任务 | `python active-jira-automation/scripts/manage_tasks.py create --scenario jira-scheduled-query-alert --task-name "Geneva P0 Bug Alert" --project GENEVA --filter-prompt "每小时查询一次 GENEVA 新增的 P0 Bug" --base-jql 'project = GENEVA AND issuetype = Bug AND "Severity" = P0' --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"issuetype","op":"=","value":"Bug"},{"field":"Severity","op":"=","value":"P0"}]}' --window-mode created --schedule-type recurring --schedule-expr '0 * * * *' --target-chat-id oc_xxx` |
+| 创建 Jira 查询提醒任务 | 在 OpenClaw 会话中描述需求，例如“每小时检查一次 GENEVA 新增的 P0 Bug 并推送到测试告警群” |
 | Lark CLI 环境检查 | `sh lark-cli.sh doctor` |
 
-## active-jira-automation 通用查询提醒
+## active-jira-automation OpenClaw 原生查询提醒
 
-`active-jira-automation` 用于把用户确认过的 Jira 筛选条件保存为自动化任务。首期场景为 `jira-scheduled-query-alert`：Agent 先把自然语言筛选目标整理成可审计的 `query_spec` 和不含运行窗口的 `base_jql`，确认 `window_mode`、调度和飞书群后，再由 runner 定时查询并发送 interactive 卡片。
+`active-jira-automation` 是给 OpenClaw 宿主使用的 Jira 自动化 skill。OpenClaw 负责创建和管理定时任务、时区、session、announce 与执行历史；skill 负责在对话中收集必要信息、生成并确认 `query_spec` 与 `base_jql`、约束执行 prompt，并复用共享脚本完成确定性查询、去重、卡片渲染和飞书投递。
 
-运行期采用两段式管线：定时查询阶段只输出 Jira key 与窗口去重所需的 `created_at/updated_at`，通过去重和 `max_issues_per_run` 后，再按 key 调用 active-jira/本地 `jira issue view <KEY> --raw` 拉取卡片字段。
+首期场景为 `jira-scheduled-query-alert`。推荐在 OpenClaw 会话中直接提出需求，由 OpenClaw 按 skill 约束完成引导式收集和创建确认，例如：
 
-真实 Jira 联调时，runner 可使用本地 JiraCLI：
+- “每小时检查一次 GENEVA 新增的 P0 Bug，推送到测试告警群”
+- “每天上午 10 点提醒本周新建且带 customer-escalation 标签的 Jira”
+- “每 30 分钟提醒最近有更新且 assignee 为空的 Jira”
+
+创建前必须确认：
+
+- `base_jql`：只包含业务筛选条件，不包含运行期 created or updated 窗口。
+- `window_mode`：`created` 表示新增提醒，`updated` 表示更新提醒，`snapshot` 表示每次检查当前仍命中的存量数据。
+- `timezone`：默认建议 `Asia/Shanghai`。
+- `target_chat_id`：飞书群稳定 ID，例如 `oc_xxx`。
+- `session`：默认建议 OpenClaw `isolated`，避免执行期重新解释业务意图。
+
+运行期采用两段式管线：定时查询阶段只输出 Jira key 与窗口去重所需的 `created_at` 或 `updated_at`，通过去重和 `max_issues_per_run` 后，再按 key 调用 active-jira 或本地 `jira issue view <KEY> --raw` 拉取卡片字段。
+
+OpenClaw 定时执行时，应向模型注入已经确认过的任务配置，而不是重新给一段自由提示词让模型二次解释。skill 内部可复用的运行时入口包括：
+
+- `active-jira-automation/scripts/run_automation_task.py`
+- `active-jira-automation/scripts/jira_query_runtime.py`
+- `active-jira-automation/scripts/scenarios/jira_scheduled_query_alert.py`
+- `active-jira-automation/scripts/templates/lark_jira_query_alert_card_v1.py`
+
+真实 Jira 联调或宿主侧集成验证时，共享 runner 仍可使用本地 JiraCLI：
 
 ```bash
 python active-jira-automation/scripts/run_automation_task.py <TASK_ID> --jira-bin jira --dry-run
 ```
 
-创建任务前必须确认：
-
-- `base_jql`：只包含业务筛选条件，不包含运行期 created/updated 窗口。
-- `window_mode`：`created` 表示新增提醒，`updated` 表示更新提醒，`snapshot` 表示每次检查当前仍命中的存量数据。
-- `target_chat_id`：飞书群稳定 ID，例如 `oc_xxx`。
-
-P0 Bug 样例：
-
-```bash
-python active-jira-automation/scripts/manage_tasks.py create \
-  --scenario jira-scheduled-query-alert \
-  --task-name "Geneva P0 Bug Alert" \
-  --project GENEVA \
-  --filter-prompt "每小时查询一次 GENEVA 新增的 P0 Bug" \
-  --base-jql 'project = GENEVA AND issuetype = Bug AND "Severity" = P0' \
-  --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"issuetype","op":"=","value":"Bug"},{"field":"Severity","op":"=","value":"P0"}]}' \
-  --window-mode created \
-  --schedule-type recurring \
-  --schedule-expr '0 * * * *' \
-  --target-chat-id oc_xxx
-```
-
-新增标签样例：
-
-```bash
-python active-jira-automation/scripts/manage_tasks.py create \
-  --scenario jira-scheduled-query-alert \
-  --task-name "Customer Escalation Label Alert" \
-  --project GENEVA \
-  --filter-prompt "每天上午 10 点提醒本周新建且带 customer-escalation 标签的 Jira" \
-  --base-jql 'project = GENEVA AND labels = customer-escalation' \
-  --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"labels","op":"=","value":"customer-escalation"}]}' \
-  --window-mode created \
-  --schedule-type recurring \
-  --schedule-expr '0 10 * * *' \
-  --target-chat-id oc_xxx
-```
-
-更新未分配样例：
-
-```bash
-python active-jira-automation/scripts/manage_tasks.py create \
-  --scenario jira-scheduled-query-alert \
-  --task-name "Unassigned Updated Issues Alert" \
-  --project GENEVA \
-  --filter-prompt "每 30 分钟提醒最近有更新且 assignee 为空的 Jira" \
-  --base-jql 'project = GENEVA AND assignee IS EMPTY' \
-  --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"assignee","op":"IS","value":"EMPTY"}]}' \
-  --window-mode updated \
-  --schedule-type recurring \
-  --schedule-expr '*/30 * * * *' \
-  --target-chat-id oc_xxx
-```
+`scripts/manage_tasks.py`、`scripts/task_store.py` 和 `scripts/scheduler_adapter.py` 仍可用于本地开发或测试 harness，但不再是推荐的 OpenClaw 生产入口。
 
 ## 仓库摘要
 
@@ -110,7 +79,7 @@ VERSION                            仓库版本
 active-jira/SKILL.md               Agent Skill 主说明
 active-jira-report/SKILL.md        场景化报告与规则化建单 Skill
 active-lark/SKILL.md               飞书/Lark CLI 通用能力 Skill
-active-jira-automation/SKILL.md    Jira 自动化任务与定时查询提醒 Skill
+active-jira-automation/SKILL.md    OpenClaw 原生 Jira 自动化与定时查询提醒 Skill
 active-jira/references/            jira-cli 用法参考
 active-jira/scripts/               场景化查询脚本
 active-jira/agents/openai.yaml     Skill 展示信息
@@ -120,7 +89,7 @@ active-jira-report/agents/openai.yaml Skill 展示信息
 active-lark/references/            lark-cli 用法与快捷命令参考
 active-lark/scripts/               飞书文档发布辅助脚本
 active-lark/agents/openai.yaml     Skill 展示信息
-active-jira-automation/scripts/    自动化任务管理、runner、场景和卡片模板
+active-jira-automation/scripts/    OpenClaw 可复用运行时、开发测试 harness、场景和卡片模板
 reports/                           本地生成报告目录，默认不提交 Git
 ```
 

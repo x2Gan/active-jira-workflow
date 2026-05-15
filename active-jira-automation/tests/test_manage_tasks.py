@@ -39,7 +39,7 @@ def create_args(tmpdir: str, name: str = "Geneva P0 Bug Alert") -> list[str]:
         "--task-name",
         name,
         "--scenario-key",
-        "new-p0-bug-alert",
+        "jira-scheduled-query-alert",
         "--project",
         "GENEVA",
         "--query-rule",
@@ -64,7 +64,7 @@ class ManageTasksTests(unittest.TestCase):
             created = json.loads(create_out)
             listed = json.loads(list_out)
             self.assertTrue(created["created"])
-            self.assertEqual(created["task"]["message_template_key"], "lark-p0-bug-card-v1")
+            self.assertEqual(created["task"]["message_template_key"], "lark-jira-query-alert-card-v1")
             self.assertEqual(created["task"]["llm_policy"], "on-match-only")
             self.assertEqual(listed["tasks"][0]["task_name"], "Geneva P0 Bug Alert")
             self.assertEqual(listed["tasks"][0]["status"], "enabled")
@@ -79,7 +79,7 @@ class ManageTasksTests(unittest.TestCase):
                     "--task-name",
                     "Missing Chat",
                     "--scenario-key",
-                    "new-p0-bug-alert",
+                    "jira-scheduled-query-alert",
                     "--project",
                     "GENEVA",
                     "--query-rule",
@@ -148,7 +148,7 @@ class ManageTasksTests(unittest.TestCase):
                 json.dumps(
                     {
                         "task_name": "Input JSON Task",
-                        "scenario_key": "new-p0-bug-alert",
+                        "scenario_key": "jira-scheduled-query-alert",
                         "project": "GENEVA",
                         "query_rule": {"issue_type": "Bug", "severity": "P0"},
                         "schedule_type": "once",

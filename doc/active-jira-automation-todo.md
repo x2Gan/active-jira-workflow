@@ -107,10 +107,10 @@ rg -n "jira-scheduled-query-alert|定时查询并提醒|jira_scheduled_query_ale
   - [x] 保留 `active-jira-automation/` 目录。
   - [x] 保留 `manage_tasks.py`、`task_store.py`、`run_automation_task.py`、`scheduler_adapter.py`。
   - [x] 保留 `jira_query_runtime.py`、`llm_summary_runtime.py`、`lark_delivery_runtime.py`。
-- [ ] 复查目标：
-  - [ ] 确认现有公共 runtime 没有把 `new-p0-bug-alert` 写成不可替换逻辑。
-  - [ ] 若只是测试 fixture 中有 P0 样例，可后续替换或保留为样例。
-- [ ] 验收命令：
+- [x] 复查目标：
+  - [x] 确认现有公共 runtime 没有把 `new-p0-bug-alert` 写成不可替换逻辑。
+  - [x] 若只是测试 fixture 中有 P0 样例，可后续替换或保留为样例。
+- [x] 验收命令：
 
 ```sh
 find active-jira-automation -maxdepth 3 | sort
@@ -119,14 +119,14 @@ rg -n "new-p0-bug-alert|lark-p0-bug-card-v1|new_p0_bug_alert" active-jira-automa
 
 ### P1.2 修正 Skill 基础说明
 
-- [ ] 代码目标：
-  - [ ] 将 `active-jira-automation/SKILL.md` 的支持场景改为 `jira-scheduled-query-alert`。
-  - [ ] 增加自然语言筛选条件到 JQL 确认摘要的工作流。
-  - [ ] 增加 `created/updated/snapshot` 窗口语义说明。
-  - [ ] 保留 create/list/pause/resume/delete 任务生命周期说明。
-- [ ] 测试目标：
-  - [ ] 文案能驱动 Agent 先收集必要信息，再确认 JQL，最后创建任务。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 将 `active-jira-automation/SKILL.md` 的支持场景改为 `jira-scheduled-query-alert`。
+  - [x] 增加自然语言筛选条件到 JQL 确认摘要的工作流。
+  - [x] 增加 `created/updated/snapshot` 窗口语义说明。
+  - [x] 保留 create/list/pause/resume/delete 任务生命周期说明。
+- [x] 测试目标：
+  - [x] 文案能驱动 Agent 先收集必要信息，再确认 JQL，最后创建任务。
+- [x] 验收命令：
 
 ```sh
 rg -n "jira-scheduled-query-alert|base_jql|window_mode|snapshot|dry-run" active-jira-automation/SKILL.md

@@ -24,7 +24,7 @@ from scenario_registry import ScenarioRegistry, ScenarioSpec  # noqa: E402
 from task_store import TaskNotFoundError, TaskStore  # noqa: E402
 
 
-def payload(scenario_key: str = "new-p0-bug-alert") -> dict[str, object]:
+def payload(scenario_key: str = "jira-scheduled-query-alert") -> dict[str, object]:
     return {
         "task_name": "Geneva P0 Bug Alert",
         "scenario_key": scenario_key,
@@ -33,7 +33,7 @@ def payload(scenario_key: str = "new-p0-bug-alert") -> dict[str, object]:
         "schedule_type": "recurring",
         "schedule_expr": "0 * * * *",
         "target_chat_id": "oc_123",
-        "message_template_key": "lark-p0-bug-card-v1",
+        "message_template_key": "lark-jira-query-alert-card-v1",
         "llm_policy": "on-match-only",
     }
 
@@ -84,8 +84,8 @@ def build_spec(*, broken_normalizer: bool = False) -> ScenarioSpec:
         return [{"key": match["key"], "summary": summary} for match, summary in zip(matches, summaries)]
 
     return ScenarioSpec(
-        scenario_key="new-p0-bug-alert",
-        display_name="新增 P0 BUG Jira 定时提醒",
+        scenario_key="jira-scheduled-query-alert",
+        display_name="Jira 定时查询并提醒",
         trigger_examples=("alert me",),
         config_schema={"project": {"required": True}},
         defaulting_rules="default",
@@ -94,7 +94,7 @@ def build_spec(*, broken_normalizer: bool = False) -> ScenarioSpec:
         match_identity=identity,
         llm_policy="on-match-only",
         llm_output_schema={"symptom_summary": "string", "impact_summary": "string"},
-        message_template_key="lark-p0-bug-card-v1",
+        message_template_key="lark-jira-query-alert-card-v1",
         renderer=renderer,
         delivery_policy="one card per match",
         acceptance_cases=("runs",),

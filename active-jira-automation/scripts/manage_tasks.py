@@ -23,8 +23,8 @@ from task_store import (  # noqa: E402
 
 
 DEFAULT_SCENARIO_METADATA = {
-    "new-p0-bug-alert": {
-        "message_template_key": "lark-p0-bug-card-v1",
+    "jira-scheduled-query-alert": {
+        "message_template_key": "lark-jira-query-alert-card-v1",
         "llm_policy": "on-match-only",
     }
 }

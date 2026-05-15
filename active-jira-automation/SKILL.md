@@ -1,6 +1,6 @@
 ---
 name: active-jira-automation
-description: manage scenario-based Jira automation tasks for Active teams. use when the user asks to create, list, pause, resume, or delete Jira automation tasks, or to set up scheduled or one-time Jira checks that notify a Feishu/Lark group, such as alerting a chat when new P0 bug Jira issues are created.
+description: manage scenario-based Jira automation tasks for Active teams. use when the user asks to create, list, pause, resume, or delete Jira automation tasks, or to set up scheduled or one-time Jira checks that notify a Feishu/Lark group. supports the jira-scheduled-query-alert scenario, where a natural language Jira filter is confirmed as base_jql and window_mode before scheduling.
 ---
 
 # Active Jira Automation
@@ -19,13 +19,13 @@ Current scope:
 
 Current supported scenario:
 
-- `new-p0-bug-alert`: query newly created P0 bug Jira issues and notify a target Feishu/Lark chat
+- `jira-scheduled-query-alert`: run a user-confirmed Jira query on a schedule or once, then notify a target Feishu/Lark chat when matching issues are found
 
 ## Responsibility Boundary
 
 - Keep generic Jira querying, field lookup, and raw JiraCLI usage in `../active-jira`.
 - Keep generic Lark auth, chat lookup, raw API usage, and generic delivery capabilities in `../active-lark`.
-- Keep automation task state, scenario registry, runner orchestration, checkpointing, and interactive card policy in this skill.
+- Keep automation task state, scenario registry, runner orchestration, checkpointing, dedupe, dry-run, and interactive card policy in this skill.
 - Do not create a separate runner per scenario; scenarios plug into the shared runtime.
 
 Consult these references when needed:
@@ -37,6 +37,8 @@ Consult these references when needed:
 ## Trigger Examples
 
 - "帮我创建一个 Geneva 项目新增 P0 BUG Jira 提醒任务"
+- "每小时检查一次 GENEVA 里状态仍然 Open 的 Release Blocker，并推送到测试告警群"
+- "每天 10 点把本周新建且带 customer-escalation 标签的 Jira 发到项目群"
 - "列出当前所有 Jira 自动任务"
 - "暂停 task_id 为 geneva-p0-bug-alert 的自动提醒"
 - "恢复这个 Jira 自动任务"
@@ -52,29 +54,50 @@ Recommended process:
 
 1. Identify the target scenario.
 2. Collect only the missing required fields.
-3. Normalize the request into structured task config.
-4. Resolve a chat name into a stable `oc_...` chat ID before creation when possible.
-5. Show a confirmation summary before any write-side effect.
-6. Create the task definition and pass scheduling work to the scheduler adapter.
+3. Normalize the natural language filter into `query_spec` and `base_jql`.
+4. Confirm `window_mode` and scheduling semantics.
+5. Resolve a chat name into a stable `oc_...` chat ID before creation when possible.
+6. Show a confirmation summary before any write-side effect.
+7. Create the task definition and pass scheduling work to the scheduler adapter.
 
-For `new-p0-bug-alert`, collect or confirm:
+For `jira-scheduled-query-alert`, collect or confirm in this order:
 
-- `project`
-- `query_rule`
-- `schedule_type`
-- `schedule_expr`
-- `target_chat_id` or a resolvable group name
+- filter target: what Jira issues to match, including issue type, status, label, version, assignee, priority, severity, or other fields
+- project scope: `project` or `projects`
+- window semantics: `window_mode`
+- schedule: `schedule_type` and `schedule_expr`
+- delivery target: `target_chat_id` or a resolvable group name
+- notification policy: `notify_policy.mode`, max issues per run, and whether snapshot matches may repeat
+
+Generate and confirm:
+
+- `filter_prompt`: the user's original natural language intent
+- `query_spec`: auditable structured query clauses
+- `base_jql`: the base JQL without runtime window clauses
+- `window_mode`: `created`, `updated`, or `snapshot`
+- `lookback_minutes`: overlap window for scheduled runs, when applicable
 
 The confirmation summary should include:
 
 - task name
-- scenario key
-- project
-- query rule
+- scenario key: `jira-scheduled-query-alert`
+- project scope
+- original filter intent
+- generated `base_jql`
+- `window_mode` and query window explanation
 - schedule type and expression
 - target chat
-- LLM policy
-- message template version
+- notification policy and max issues per run
+- LLM policy: on-match only
+- message template version: `lark-jira-query-alert-card-v1`
+
+Only create the task after the user confirms the summary. Do not write a task whose `base_jql`, `window_mode`, or target chat is still ambiguous.
+
+Window semantics:
+
+- `created`: alert on newly created Jira issues. Runtime appends a `created` window to `base_jql`.
+- `updated`: alert on recently updated Jira issues. Runtime appends an `updated` window to `base_jql`.
+- `snapshot`: inspect the current set of issues matching `base_jql`. Runtime does not append a time window; dedupe and `notify_policy` must prevent unwanted repeat alerts.
 
 ### 2. List, pause, resume, delete
 
@@ -88,10 +111,11 @@ Rules:
 
 ### 3. Run supported scenario logic
 
-Current supported scenario: `new-p0-bug-alert`.
+Current supported scenario: `jira-scheduled-query-alert`.
 
 Execution rules:
 
+- Build final runtime JQL from confirmed `base_jql` plus the `window_mode` query window.
 - Query and dedupe deterministically before any LLM call.
 - Do not call LLM when there are no matches.
 - For matches, allow LLM to produce only limited summary fields.

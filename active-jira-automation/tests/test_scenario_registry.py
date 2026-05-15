@@ -15,19 +15,19 @@ sys.modules[SPEC.name] = scenario_registry
 SPEC.loader.exec_module(scenario_registry)
 
 
-def make_spec(key: str = "new-p0-bug-alert") -> object:
+def make_spec(key: str = "jira-scheduled-query-alert") -> object:
     return scenario_registry.ScenarioSpec(
         scenario_key=key,
-        display_name="新增 P0 BUG Jira 定时提醒",
+        display_name="Jira 定时查询并提醒",
         trigger_examples=("帮我创建一个 Geneva 项目新增 P0 BUG Jira 提醒任务",),
         config_schema={"project": {"required": True}},
         defaulting_rules="use issue_type=Bug and severity=P0 by default",
-        query_builder="build new-p0-bug query",
+        query_builder="build Jira scheduled query alert",
         result_normalizer="normalize Jira fields",
         match_identity="task_id + issue_key + issue_created_at",
         llm_policy="on-match-only",
         llm_output_schema={"symptom_summary": "string", "impact_summary": "string"},
-        message_template_key="lark-p0-bug-card-v1",
+        message_template_key="lark-jira-query-alert-card-v1",
         renderer="interactive renderer",
         delivery_policy="one card per match",
         acceptance_cases=("create and resolve scenario successfully",),
@@ -41,8 +41,8 @@ class ScenarioRegistryTests(unittest.TestCase):
 
         registry.register(spec)
 
-        self.assertEqual(registry.get("new-p0-bug-alert").display_name, spec.display_name)
-        self.assertEqual(registry.list_keys(), ["new-p0-bug-alert"])
+        self.assertEqual(registry.get("jira-scheduled-query-alert").display_name, spec.display_name)
+        self.assertEqual(registry.list_keys(), ["jira-scheduled-query-alert"])
 
     def test_register_duplicate_scenario_fails(self) -> None:
         registry = scenario_registry.ScenarioRegistry()

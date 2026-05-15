@@ -200,16 +200,16 @@ python -m unittest discover active-jira-automation/tests -p 'test_manage_tasks.p
 
 ### P3.1 实现参数化 JQL 组合
 
-- [ ] 代码目标：
-  - [ ] `jira_query_runtime.py` 接收 `base_jql` 和窗口参数。
-  - [ ] `created` 模式追加 created 时间窗口。
-  - [ ] `updated` 模式追加 updated 时间窗口。
-  - [ ] `snapshot` 模式不追加时间窗口。
-  - [ ] `ORDER BY` 与窗口字段保持一致，允许任务配置覆盖。
-- [ ] 测试目标：
-  - [ ] 覆盖三种窗口模式的最终 JQL 输出。
-  - [ ] 覆盖 JQL 中已有 `ORDER BY` 时的处理策略。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] `jira_query_runtime.py` 接收 `base_jql` 和窗口参数。
+  - [x] `created` 模式追加 created 时间窗口。
+  - [x] `updated` 模式追加 updated 时间窗口。
+  - [x] `snapshot` 模式不追加时间窗口。
+  - [x] `ORDER BY` 与窗口字段保持一致，允许任务配置覆盖。
+- [x] 测试目标：
+  - [x] 覆盖三种窗口模式的最终 JQL 输出。
+  - [x] 覆盖 JQL 中已有 `ORDER BY` 时的处理策略。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_jira_query_runtime.py'
@@ -217,15 +217,15 @@ python -m unittest discover active-jira-automation/tests -p 'test_jira_query_run
 
 ### P3.2 修正检查点与去重逻辑
 
-- [ ] 代码目标：
-  - [ ] `created` 去重键使用 `task_id + issue_key + created`。
-  - [ ] `updated` 去重键使用 `task_id + issue_key + updated`。
-  - [ ] `snapshot` 去重键使用 `task_id + issue_key + base_jql_hash`。
-  - [ ] 查询失败不推进检查点。
-  - [ ] 无命中时只更新检查点和日志。
-- [ ] 测试目标：
-  - [ ] 覆盖首次运行、续跑、回看窗口、重复命中过滤、查询失败。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] `created` 去重键使用 `task_id + issue_key + created`。
+  - [x] `updated` 去重键使用 `task_id + issue_key + updated`。
+  - [x] `snapshot` 去重键使用 `task_id + issue_key + base_jql_hash`。
+  - [x] 查询失败不推进检查点。
+  - [x] 无命中时只更新检查点和日志。
+- [x] 测试目标：
+  - [x] 覆盖首次运行、续跑、回看窗口、重复命中过滤、查询失败。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_jira_query_runtime.py'
@@ -234,12 +234,12 @@ python -m unittest discover active-jira-automation/tests -p 'test_run_automation
 
 ### P3.3 接入真实 Jira 查询命令前的 fixture 运行
 
-- [ ] 代码目标：
-  - [ ] 准备本地 fixture JSON，模拟不同 JQL 命中结果。
-  - [ ] runner 支持 dry-run/fixture 模式，避免早期依赖真实 Jira。
-- [ ] 测试目标：
-  - [ ] 用 fixture 跑通无命中、单条命中、多条命中、超出上限。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 准备本地 fixture JSON，模拟不同 JQL 命中结果。
+  - [x] runner 支持 dry-run/fixture 模式，避免早期依赖真实 Jira。
+- [x] 测试目标：
+  - [x] 用 fixture 跑通无命中、单条命中、多条命中、超出上限。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_run_automation_task.py'

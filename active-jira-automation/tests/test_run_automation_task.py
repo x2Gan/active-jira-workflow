@@ -13,6 +13,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 RUNNER_SCRIPT = SCRIPTS_DIR / "run_automation_task.py"
+FIXTURE_FILE = Path(__file__).resolve().parent / "fixtures" / "jira_query_results.json"
 RUNNER_SPEC = importlib.util.spec_from_file_location("run_automation_task", RUNNER_SCRIPT)
 assert RUNNER_SPEC is not None
 runner = importlib.util.module_from_spec(RUNNER_SPEC)
@@ -21,6 +22,7 @@ sys.modules[RUNNER_SPEC.name] = runner
 RUNNER_SPEC.loader.exec_module(runner)
 
 from scenario_registry import ScenarioRegistry, ScenarioSpec  # noqa: E402
+from jira_query_runtime import build_final_jql, match_identity_for  # noqa: E402
 from task_store import TaskNotFoundError, TaskStore  # noqa: E402
 
 
@@ -81,8 +83,8 @@ class FakeDeliveryRuntime:
 
 
 def build_spec(*, broken_normalizer: bool = False) -> ScenarioSpec:
-    def query_builder(task: dict[str, object], window: object) -> dict[str, object]:
-        return {"project": task["project"], "window": window.as_payload()}
+    def query_builder(task: dict[str, object], window: object) -> str:
+        return build_final_jql(task, window)
 
     def normalizer(raw_results: list[dict[str, object]], task: dict[str, object], window: object) -> list[dict[str, object]]:
         if broken_normalizer:
@@ -90,7 +92,7 @@ def build_spec(*, broken_normalizer: bool = False) -> ScenarioSpec:
         return list(raw_results)
 
     def identity(match: dict[str, object], task: dict[str, object]) -> str:
-        return f"{task['task_id']}:{match['key']}:{match['created_at']}"
+        return match_identity_for(task, match)
 
     def renderer(matches: list[dict[str, object]], summaries: list[dict[str, object]], task: dict[str, object]) -> list[dict[str, object]]:
         return [{"key": match["key"], "summary": summary} for match, summary in zip(matches, summaries)]
@@ -148,6 +150,12 @@ class RunAutomationTaskTests(unittest.TestCase):
             self.assertEqual(delivery.calls, 0)
             self.assertEqual(runtime["last_checkpoint"], "2026-05-14T09:00:00Z")
             self.assertEqual(task["last_checkpoint"], "2026-05-14T09:00:00Z")
+            self.assertEqual(
+                deps.jira_client.calls[0],
+                '(project = GENEVA AND issuetype = Bug AND "Severity" = P0) '
+                'AND created >= "2026-05-14T07:55:00Z" AND created < "2026-05-14T09:00:00Z" '
+                "ORDER BY created ASC",
+            )
 
     def test_match_path_summarizes_renders_delivers_and_dedupes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -173,6 +181,50 @@ class RunAutomationTaskTests(unittest.TestCase):
             self.assertEqual(delivery.calls, 1)
             self.assertEqual(len(runtime["delivered_identities"]), 1)
 
+    def test_updated_mode_dedupes_by_updated_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            results = [{"key": "GENEVA-1", "updated_at": "2026-05-14T08:30:00Z", "summary": "first"}]
+            deps, _summary, _delivery = deps_for(tmpdir, results)
+            task = deps.store.get_task("task-1")
+            task["window_mode"] = "updated"
+            deps.store.update_status("task-1", "enabled")
+            runner.write_json(deps.store.paths_for("task-1").definition, task)
+
+            runner.run_task(
+                "task-1",
+                deps,
+                current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+            )
+
+            runtime = deps.store.read_runtime_state("task-1")
+            self.assertEqual(runtime["delivered_identities"], ["task-1:GENEVA-1:2026-05-14T08:30:00Z"])
+            self.assertIn("updated >=", deps.jira_client.calls[0])
+
+    def test_snapshot_mode_dedupes_by_base_jql_hash_without_window_jql(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            results = [{"key": "GENEVA-1", "summary": "first"}]
+            deps, summary, delivery = deps_for(tmpdir, results)
+            task = deps.store.get_task("task-1")
+            task["window_mode"] = "snapshot"
+            runner.write_json(deps.store.paths_for("task-1").definition, task)
+
+            first = runner.run_task(
+                "task-1",
+                deps,
+                current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+            )
+            second = runner.run_task(
+                "task-1",
+                deps,
+                current_time=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
+            )
+
+            self.assertEqual(first["match_count"], 1)
+            self.assertEqual(second["match_count"], 0)
+            self.assertEqual(summary.calls, 1)
+            self.assertEqual(delivery.calls, 1)
+            self.assertEqual(deps.jira_client.calls[0], '(project = GENEVA AND issuetype = Bug AND "Severity" = P0)')
+
     def test_dry_run_does_not_record_delivered_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             results = [{"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z", "summary": "first"}]
@@ -190,6 +242,65 @@ class RunAutomationTaskTests(unittest.TestCase):
             self.assertEqual(delivery.dry_runs, [True])
             self.assertFalse(deps.store.paths_for("task-1").runtime.exists())
             self.assertIsNone(task["last_checkpoint"])
+
+    def test_jira_query_failure_is_recorded_without_advancing_checkpoint(self) -> None:
+        class FailingJiraClient:
+            def query(self, query: object, window: object, task: dict[str, object]) -> list[dict[str, object]]:
+                raise RuntimeError("jira unavailable")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            deps, _summary, _delivery = deps_for(tmpdir, [])
+            deps.jira_client = FailingJiraClient()
+
+            with self.assertRaises(runner.RunnerError):
+                runner.run_task(
+                    "task-1",
+                    deps,
+                    current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+                )
+
+            runtime = deps.store.read_runtime_state("task-1")
+            task = deps.store.get_task("task-1")
+            self.assertEqual(runtime["last_run_status"], "error")
+            self.assertIn("jira unavailable", runtime["last_error"])
+            self.assertIsNone(task["last_checkpoint"])
+
+    def test_fixture_client_supports_no_match_single_match_and_multiple_matches(self) -> None:
+        no_match = runner.FixtureJiraClient({"queries": [{"contains": "missing", "issues": [{"key": "NOPE"}]}]})
+        single = runner.FixtureJiraClient({"issues": [{"key": "GENEVA-1"}]})
+        multiple = runner.FixtureJiraClient([{"key": "GENEVA-1"}, {"key": "GENEVA-2"}])
+        from_file = runner.FixtureJiraClient.from_file(FIXTURE_FILE)
+
+        self.assertEqual(no_match.query("project = GENEVA", object(), {}), [])
+        self.assertEqual(single.query("project = GENEVA", object(), {}), [{"key": "GENEVA-1"}])
+        self.assertEqual(len(multiple.query("project = GENEVA", object(), {})), 2)
+        self.assertEqual(len(from_file.query("project = GENEVA", object(), {})), 2)
+
+    def test_notify_policy_limits_fixture_match_delivery(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            deps, summary, delivery = deps_for(
+                tmpdir,
+                [
+                    {"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z", "summary": "first"},
+                    {"key": "GENEVA-2", "created_at": "2026-05-14T08:31:00Z", "summary": "second"},
+                ],
+            )
+            task = deps.store.get_task("task-1")
+            task["notify_policy"]["max_issues_per_run"] = 1
+            runner.write_json(deps.store.paths_for("task-1").definition, task)
+
+            result = runner.run_task(
+                "task-1",
+                deps,
+                current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+            )
+
+            runtime = deps.store.read_runtime_state("task-1")
+            self.assertEqual(result["match_count"], 1)
+            self.assertEqual(result["skipped_by_limit"], 1)
+            self.assertEqual(summary.calls, 1)
+            self.assertEqual(delivery.calls, 1)
+            self.assertEqual(len(runtime["delivered_identities"]), 2)
 
     def test_unknown_task_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

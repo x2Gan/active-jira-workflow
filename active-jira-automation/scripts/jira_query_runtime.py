@@ -5,10 +5,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import hashlib
 from typing import Any
 
 
 DEFAULT_LOOKBACK_MINUTES = 5
+WINDOW_FIELDS = {
+    "created": "created",
+    "updated": "updated",
+}
 
 
 class JiraQueryRuntimeError(RuntimeError):
@@ -88,6 +93,13 @@ def lookback_minutes_for(task: dict[str, Any], default: int = DEFAULT_LOOKBACK_M
     return value
 
 
+def window_mode_for(task: dict[str, Any]) -> str:
+    mode = task.get("window_mode", "created")
+    if mode not in {"created", "updated", "snapshot"}:
+        raise JiraQueryRuntimeError(f"invalid window_mode: {mode}")
+    return mode
+
+
 def compute_query_window(
     task: dict[str, Any],
     runtime_state: dict[str, Any] | None = None,
@@ -109,9 +121,144 @@ def compute_query_window(
     )
 
 
+def split_order_by(jql: str) -> tuple[str, str | None]:
+    """Split a JQL string into the query body and trailing ORDER BY clause.
+
+    The scanner is quote-aware so an issue summary containing "order by" does
+    not accidentally truncate the base query.
+    """
+    text = jql.strip().rstrip(";").strip()
+    lower = text.lower()
+    in_quote = False
+    escaped = False
+    order_index: int | None = None
+    order_content_index: int | None = None
+
+    for index, char in enumerate(text):
+        if char == "\\" and in_quote:
+            escaped = not escaped
+            continue
+        if char == '"' and not escaped:
+            in_quote = not in_quote
+        escaped = False
+        if in_quote:
+            continue
+        if lower.startswith("order", index):
+            before = lower[index - 1] if index > 0 else " "
+            after_order = lower[index + 5] if index + 5 < len(lower) else " "
+            by_start = index + 5
+            if before.isalnum() or before == "_" or after_order.isalnum() or after_order == "_":
+                continue
+            while by_start < len(lower) and lower[by_start].isspace():
+                by_start += 1
+            if lower.startswith("by", by_start):
+                after_by = lower[by_start + 2] if by_start + 2 < len(lower) else " "
+                if not after_by.isalnum() and after_by != "_":
+                    order_index = index
+                    order_content_index = by_start + 2
+
+    if order_index is None:
+        return text, None
+    body = text[:order_index].strip()
+    assert order_content_index is not None
+    return body, text[order_content_index:].strip()
+
+
+def _configured_order_by(task: dict[str, Any]) -> str | None:
+    raw_order_by = task.get("order_by")
+    if isinstance(raw_order_by, str) and raw_order_by.strip():
+        return raw_order_by.strip()
+
+    query_spec = task.get("query_spec")
+    if not isinstance(query_spec, dict):
+        return None
+    spec_order_by = query_spec.get("order_by")
+    if isinstance(spec_order_by, str) and spec_order_by.strip():
+        return spec_order_by.strip()
+    if isinstance(spec_order_by, list) and spec_order_by:
+        clauses: list[str] = []
+        for item in spec_order_by:
+            if not isinstance(item, dict):
+                continue
+            field = item.get("field")
+            if not isinstance(field, str) or not field.strip():
+                continue
+            direction = str(item.get("direction", "ASC")).upper()
+            if direction not in {"ASC", "DESC"}:
+                raise JiraQueryRuntimeError(f"invalid order_by direction: {direction}")
+            clauses.append(f"{field.strip()} {direction}")
+        if clauses:
+            return ", ".join(clauses)
+    return None
+
+
+def _jql_datetime(value: datetime) -> str:
+    return format_datetime(value)
+
+
+def build_final_jql(task: dict[str, Any], window: QueryWindow) -> str:
+    base_jql = task.get("base_jql")
+    if not isinstance(base_jql, str) or not base_jql.strip():
+        raise JiraQueryRuntimeError("missing base_jql")
+
+    mode = window_mode_for(task)
+    base_body, existing_order_by = split_order_by(base_jql)
+    configured_order_by = _configured_order_by(task)
+
+    if mode in WINDOW_FIELDS:
+        window_field = WINDOW_FIELDS[mode]
+        order_by = configured_order_by or f"{window_field} ASC"
+        return (
+            f"({base_body}) "
+            f'AND {window_field} >= "{_jql_datetime(window.query_start)}" '
+            f'AND {window_field} < "{_jql_datetime(window.query_end)}" '
+            f"ORDER BY {order_by}"
+        )
+
+    order_by = configured_order_by or existing_order_by
+    final_jql = f"({base_body})"
+    if order_by:
+        final_jql = f"{final_jql} ORDER BY {order_by}"
+    return final_jql
+
+
 def created_in_checkpoint_range(created_at: str | datetime, window: QueryWindow) -> bool:
     created = parse_datetime(created_at, field_name="issue created_at")
-    return window.checkpoint < created <= window.query_end
+    return window.checkpoint < created < window.query_end
+
+
+def value_for_match_identity(match: dict[str, Any], field: str) -> str:
+    candidates = (f"{field}_at", field)
+    for key in candidates:
+        value = match.get(key)
+        if value not in (None, ""):
+            if isinstance(value, datetime):
+                return format_datetime(value)
+            return str(value)
+    raise JiraQueryRuntimeError(f"match is missing {field} value for identity")
+
+
+def base_jql_hash(task: dict[str, Any]) -> str:
+    base_jql = task.get("base_jql")
+    if not isinstance(base_jql, str) or not base_jql.strip():
+        raise JiraQueryRuntimeError("missing base_jql")
+    normalized = " ".join(base_jql.strip().split()).lower()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def match_identity_for(task: dict[str, Any], match: dict[str, Any]) -> str:
+    task_id = task.get("task_id")
+    issue_key = match.get("key") or match.get("issue_key")
+    if not isinstance(task_id, str) or not task_id.strip():
+        raise JiraQueryRuntimeError("task is missing task_id for identity")
+    if not isinstance(issue_key, str) or not issue_key.strip():
+        raise JiraQueryRuntimeError("match is missing issue key for identity")
+
+    mode = window_mode_for(task)
+    if mode == "snapshot":
+        return f"{task_id}:{issue_key}:{base_jql_hash(task)}"
+    identity_value = value_for_match_identity(match, mode)
+    return f"{task_id}:{issue_key}:{identity_value}"
 
 
 def checkpoint_update_payload(window: QueryWindow) -> dict[str, Any]:

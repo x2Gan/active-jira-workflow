@@ -74,7 +74,7 @@ class JiraQueryRuntimeTests(unittest.TestCase):
         self.assertFalse(jira_query_runtime.created_in_checkpoint_range("2026-05-14T08:58:00Z", window))
         self.assertFalse(jira_query_runtime.created_in_checkpoint_range("2026-05-14T09:00:00Z", window))
         self.assertTrue(jira_query_runtime.created_in_checkpoint_range("2026-05-14T09:00:01Z", window))
-        self.assertTrue(jira_query_runtime.created_in_checkpoint_range("2026-05-14T10:00:00Z", window))
+        self.assertFalse(jira_query_runtime.created_in_checkpoint_range("2026-05-14T10:00:00Z", window))
         self.assertFalse(jira_query_runtime.created_in_checkpoint_range("2026-05-14T10:00:01Z", window))
 
     def test_checkpoint_update_payload_moves_checkpoint_to_query_end(self) -> None:
@@ -88,6 +88,119 @@ class JiraQueryRuntimeTests(unittest.TestCase):
 
         self.assertEqual(payload["last_checkpoint"], "2026-05-14T09:00:00Z")
         self.assertEqual(payload["idempotency_window"]["checkpoint"], "2026-05-14T08:00:00Z")
+
+    def test_build_final_jql_adds_created_window_and_default_order(self) -> None:
+        task = {
+            "base_jql": "project = GENEVA AND issuetype = Bug",
+            "window_mode": "created",
+            "created_at": "2026-05-14T08:00:00Z",
+            "lookback_minutes": 5,
+        }
+        window = jira_query_runtime.compute_query_window(
+            task,
+            {},
+            current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(
+            jira_query_runtime.build_final_jql(task, window),
+            '(project = GENEVA AND issuetype = Bug) AND created >= "2026-05-14T07:55:00Z" '
+            'AND created < "2026-05-14T09:00:00Z" ORDER BY created ASC',
+        )
+
+    def test_build_final_jql_adds_updated_window_and_default_order(self) -> None:
+        task = {
+            "base_jql": "project = GENEVA AND assignee IS EMPTY",
+            "window_mode": "updated",
+            "created_at": "2026-05-14T08:00:00Z",
+            "lookback_minutes": 10,
+        }
+        window = jira_query_runtime.compute_query_window(
+            task,
+            {"last_checkpoint": "2026-05-14T09:00:00Z"},
+            current_time=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(
+            jira_query_runtime.build_final_jql(task, window),
+            '(project = GENEVA AND assignee IS EMPTY) AND updated >= "2026-05-14T08:50:00Z" '
+            'AND updated < "2026-05-14T10:00:00Z" ORDER BY updated ASC',
+        )
+
+    def test_build_final_jql_snapshot_does_not_add_window(self) -> None:
+        task = {
+            "base_jql": "project = GENEVA AND status = Open",
+            "window_mode": "snapshot",
+            "created_at": "2026-05-14T08:00:00Z",
+        }
+        window = jira_query_runtime.compute_query_window(
+            task,
+            {},
+            current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(jira_query_runtime.build_final_jql(task, window), "(project = GENEVA AND status = Open)")
+
+    def test_build_final_jql_replaces_existing_order_by_for_window_modes(self) -> None:
+        task = {
+            "base_jql": "project = GENEVA ORDER   BY priority DESC",
+            "window_mode": "created",
+            "created_at": "2026-05-14T08:00:00Z",
+        }
+        window = jira_query_runtime.compute_query_window(
+            task,
+            {},
+            current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(
+            jira_query_runtime.build_final_jql(task, window),
+            '(project = GENEVA) AND created >= "2026-05-14T07:55:00Z" '
+            'AND created < "2026-05-14T09:00:00Z" ORDER BY created ASC',
+        )
+
+    def test_build_final_jql_allows_order_by_override(self) -> None:
+        task = {
+            "base_jql": "project = GENEVA ORDER BY priority DESC",
+            "window_mode": "updated",
+            "created_at": "2026-05-14T08:00:00Z",
+            "query_spec": {"order_by": [{"field": "updated", "direction": "DESC"}]},
+        }
+        window = jira_query_runtime.compute_query_window(
+            task,
+            {},
+            current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertTrue(jira_query_runtime.build_final_jql(task, window).endswith("ORDER BY updated DESC"))
+
+    def test_match_identity_uses_window_mode_fields(self) -> None:
+        base_task = {
+            "task_id": "task-1",
+            "base_jql": "project = GENEVA AND status = Open",
+        }
+
+        self.assertEqual(
+            jira_query_runtime.match_identity_for(
+                {**base_task, "window_mode": "created"},
+                {"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z"},
+            ),
+            "task-1:GENEVA-1:2026-05-14T08:30:00Z",
+        )
+        self.assertEqual(
+            jira_query_runtime.match_identity_for(
+                {**base_task, "window_mode": "updated"},
+                {"key": "GENEVA-1", "updated_at": "2026-05-14T08:45:00Z"},
+            ),
+            "task-1:GENEVA-1:2026-05-14T08:45:00Z",
+        )
+        self.assertEqual(
+            jira_query_runtime.match_identity_for(
+                {**base_task, "window_mode": "snapshot"},
+                {"key": "GENEVA-1"},
+            ),
+            f"task-1:GENEVA-1:{jira_query_runtime.base_jql_hash(base_task)}",
+        )
 
 
 if __name__ == "__main__":

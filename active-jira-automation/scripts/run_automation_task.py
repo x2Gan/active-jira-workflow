@@ -17,6 +17,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from jira_query_runtime import (  # noqa: E402
     QueryWindow,
+    build_final_jql,
     checkpoint_update_payload,
     compute_query_window,
     format_datetime,
@@ -66,6 +67,53 @@ class UnconfiguredJiraClient:
         raise RunnerError("jira_client is not configured")
 
 
+class FixtureJiraClient:
+    """Local Jira client for deterministic dry-run and tests.
+
+    The fixture may be either a JSON list of issues, {"issues": [...]}, or
+    {"queries": [{"contains": "...", "issues": [...]}]} for simple JQL-based
+    routing without requiring a real Jira connection.
+    """
+
+    def __init__(self, fixture: Any) -> None:
+        self.fixture = fixture
+        self.calls: list[Any] = []
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> "FixtureJiraClient":
+        fixture_path = Path(path)
+        try:
+            fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise RunnerError(f"fixture file not found: {fixture_path}") from exc
+        except json.JSONDecodeError as exc:
+            raise RunnerError(f"invalid fixture JSON: {fixture_path}: {exc}") from exc
+        return cls(fixture)
+
+    def query(self, query: Any, window: QueryWindow, task: dict[str, Any]) -> list[Any]:
+        self.calls.append(query)
+        fixture = self.fixture
+        if isinstance(fixture, list):
+            return fixture
+        if not isinstance(fixture, dict):
+            raise RunnerError("fixture JSON must be a list or object")
+        if isinstance(fixture.get("issues"), list):
+            return fixture["issues"]
+        if isinstance(fixture.get("queries"), list):
+            query_text = query if isinstance(query, str) else json.dumps(query, ensure_ascii=False, sort_keys=True)
+            for candidate in fixture["queries"]:
+                if not isinstance(candidate, dict):
+                    continue
+                contains = candidate.get("contains")
+                if isinstance(contains, str) and contains in query_text:
+                    issues = candidate.get("issues", [])
+                    if not isinstance(issues, list):
+                        raise RunnerError("fixture query issues must be a list")
+                    return issues
+            return []
+        raise RunnerError("fixture JSON must contain issues or queries")
+
+
 def load_runtime_state(store: TaskStore, task_id: str) -> dict[str, Any]:
     path = store.paths_for(task_id).runtime
     if not path.exists():
@@ -81,7 +129,7 @@ def update_task_checkpoint(store: TaskStore, task: dict[str, Any], checkpoint: s
 
 def call_query_builder(scenario: ScenarioSpec, task: dict[str, Any], window: QueryWindow) -> Any:
     if not callable(scenario.query_builder):
-        return task.get("query_rule", {})
+        return build_final_jql(task, window)
     return scenario.query_builder(task, window)
 
 
@@ -142,6 +190,18 @@ def filter_new_matches(
     return fresh, identities
 
 
+def apply_notify_limit(matches: list[dict[str, Any]], task: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
+    notify_policy = task.get("notify_policy") if isinstance(task.get("notify_policy"), dict) else {}
+    try:
+        limit = int(notify_policy.get("max_issues_per_run", len(matches)))
+    except (TypeError, ValueError) as exc:
+        raise RunnerError("notify_policy.max_issues_per_run must be an integer") from exc
+    if limit <= 0:
+        raise RunnerError("notify_policy.max_issues_per_run must be positive")
+    limited = matches[:limit]
+    return limited, max(0, len(matches) - len(limited))
+
+
 def run_task(
     task_selector: str,
     deps: RunnerDependencies,
@@ -160,7 +220,8 @@ def run_task(
         query = call_query_builder(scenario, task, window)
         raw_results = deps.jira_client.query(query, window, task)
         normalized = normalize_results(scenario, raw_results, task, window)
-        matches, delivered_identities = filter_new_matches(scenario, normalized, task, runtime_state)
+        matches, fresh_identities = filter_new_matches(scenario, normalized, task, runtime_state)
+        matches, skipped_by_limit = apply_notify_limit(matches, task)
 
         checkpoint_payload = checkpoint_update_payload(window)
         if not matches:
@@ -174,6 +235,7 @@ def run_task(
                     "dry_run": True,
                     "window": window.as_payload(),
                     "checkpoint_candidate": checkpoint_payload["last_checkpoint"],
+                    "skipped_by_limit": 0,
                 }
             runtime = deps.store.write_runtime_state(
                 task["task_id"],
@@ -197,6 +259,7 @@ def run_task(
                 "dry_run": dry_run,
                 "window": window.as_payload(),
                 "runtime": runtime,
+                "skipped_by_limit": 0,
             }
 
         summaries = deps.summary_runtime.summarize(matches, task, scenario)
@@ -217,9 +280,10 @@ def run_task(
                 "window": window.as_payload(),
                 "checkpoint_candidate": checkpoint_payload["last_checkpoint"],
                 "delivery_result": delivery_result,
+                "skipped_by_limit": skipped_by_limit,
             }
         previous_identities = list(runtime_state.get("delivered_identities") or [])
-        next_identities = previous_identities + delivered_identities
+        next_identities = previous_identities + fresh_identities
         delivery_count = int(delivery_result.get("sent_count", len(cards) if not dry_run else 0))
         runtime = deps.store.write_runtime_state(
             task["task_id"],
@@ -232,6 +296,7 @@ def run_task(
                 "last_error": None,
                 "delivered_identities": next_identities,
                 "last_delivery_result": delivery_result,
+                "skipped_by_limit": skipped_by_limit,
             },
         )
         update_task_checkpoint(deps.store, task, checkpoint_payload["last_checkpoint"])
@@ -242,6 +307,7 @@ def run_task(
                 "status": "success",
                 "match_count": len(matches),
                 "delivery_count": delivery_count,
+                "skipped_by_limit": skipped_by_limit,
                 "dry_run": dry_run,
             },
         )
@@ -255,6 +321,7 @@ def run_task(
             "window": window.as_payload(),
             "delivery_result": delivery_result,
             "runtime": runtime,
+            "skipped_by_limit": skipped_by_limit,
         }
     except Exception as exc:
         error_message = str(exc)
@@ -290,6 +357,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("task", help="Task ID or unique task name.")
     parser.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT), help="Task data root.")
     parser.add_argument("--dry-run", action="store_true", help="Render and validate without real delivery.")
+    parser.add_argument("--fixture-json", help="Read Jira query results from a local fixture JSON file.")
     return parser
 
 
@@ -297,6 +365,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     deps = build_default_dependencies(args.data_root)
+    if args.fixture_json:
+        deps.jira_client = FixtureJiraClient.from_file(args.fixture_json)
     try:
         result = run_task(args.task, deps, dry_run=args.dry_run)
     except (RunnerError, TaskStoreError, ScenarioRegistryError) as exc:

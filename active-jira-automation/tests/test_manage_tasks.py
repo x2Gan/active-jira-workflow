@@ -64,6 +64,21 @@ def create_args(tmpdir: str, name: str = "Geneva P0 Bug Alert") -> list[str]:
 
 
 class ManageTasksTests(unittest.TestCase):
+    def test_create_dry_run_validates_without_persisting_task(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            code, out, err = run_cli(create_args(tmpdir) + ["--dry-run"])
+            list_code, list_out, list_err = run_cli(["list", "--data-root", tmpdir])
+
+            self.assertEqual(code, 0, err)
+            self.assertEqual(list_code, 0, list_err)
+            payload = json.loads(out)
+            listed = json.loads(list_out)
+            self.assertFalse(payload["created"])
+            self.assertTrue(payload["dry_run"])
+            self.assertEqual(payload["task"]["task_name"], "Geneva P0 Bug Alert")
+            self.assertEqual(payload["task"]["window_mode"], "created")
+            self.assertEqual(listed["tasks"], [])
+
     def test_create_and_list_task(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             create_code, create_out, create_err = run_cli(create_args(tmpdir))
@@ -74,6 +89,7 @@ class ManageTasksTests(unittest.TestCase):
             created = json.loads(create_out)
             listed = json.loads(list_out)
             self.assertTrue(created["created"])
+            self.assertFalse(created["dry_run"])
             self.assertEqual(created["task"]["message_template_key"], "lark-jira-query-alert-card-v1")
             self.assertEqual(created["task"]["llm_policy"], "on-match-only")
             self.assertEqual(created["task"]["base_jql"], 'project = GENEVA AND issuetype = Bug AND "Severity" = P0')

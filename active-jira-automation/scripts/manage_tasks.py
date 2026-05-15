@@ -17,9 +17,13 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from task_store import (  # noqa: E402
     DEFAULT_DATA_ROOT,
+    TaskConflictError,
     TaskStore,
     TaskStoreError,
     TaskValidationError,
+    generate_task_id,
+    isoformat_utc,
+    validate_task_payload,
 )
 
 
@@ -123,10 +127,40 @@ def task_summary(task: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def preview_task(store: TaskStore, payload: dict[str, Any]) -> dict[str, Any]:
+    candidate = copy.deepcopy(payload)
+    validate_task_payload(candidate)
+
+    task_name = candidate["task_name"]
+    active_name_conflict = any(
+        task.get("task_name") == task_name and task.get("status") != "deleted"
+        for task in store.list_tasks(include_deleted=True)
+    )
+    if active_name_conflict:
+        raise TaskConflictError(f"task_name already exists: {task_name}")
+
+    current_time = isoformat_utc()
+    preview = {
+        **candidate,
+        "task_id": generate_task_id(task_name),
+        "status": candidate.get("status", "enabled"),
+        "created_at": candidate.get("created_at") or current_time,
+        "updated_at": current_time,
+        "last_checkpoint": candidate.get("last_checkpoint"),
+    }
+    return preview
+
+
 def command_create(args: argparse.Namespace) -> int:
     store = TaskStore(args.data_root)
-    task = store.create_task(build_create_payload(args))
-    print_json({"created": True, "task": task_summary(task)})
+    payload = build_create_payload(args)
+    if args.dry_run:
+        task = preview_task(store, payload)
+        print_json({"created": False, "dry_run": True, "task": task_summary(task)})
+        return 0
+
+    task = store.create_task(payload)
+    print_json({"created": True, "dry_run": False, "task": task_summary(task)})
     return 0
 
 
@@ -194,6 +228,7 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument("--message-template-key")
     create_parser.add_argument("--llm-policy")
     create_parser.add_argument("--created-by")
+    create_parser.add_argument("--dry-run", action="store_true", help="Validate and preview without writing task state.")
     create_parser.set_defaults(handler=command_create)
 
     list_parser = subparsers.add_parser("list", parents=[common], help="List task definitions.")

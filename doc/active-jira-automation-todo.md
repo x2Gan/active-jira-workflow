@@ -52,7 +52,7 @@
 | P4 | 场景一通用接入 | `jira_scheduled_query_alert.py` | 待做 |
 | P5 | 通用卡片模板 | `lark_jira_query_alert_card_v1.py` | 待做 |
 | P6 | 创建工作流与 Skill 文档 | Agent 追问、JQL 确认摘要、dry-run 规则 | 待做 |
-| P7 | 端到端验收 | fixture、dry-run、样例任务、回归测试 | 待做 |
+| P7 | 端到端验收 | fixture、dry-run、样例任务、回归测试 | 本地完成，联调待验证 |
 
 ## 5. P0 设计修正与范围重置
 
@@ -357,61 +357,107 @@ rg -n "active-jira-automation|jira-scheduled-query-alert|base-jql|window-mode" R
 
 ### P7.1 跑通 P0 Bug 样例，但验证它不是硬编码
 
-- [ ] 代码目标：
-  - [ ] 创建一个 P0 Bug 查询提醒任务。
-  - [ ] 通过 fixture/dry-run 跑通命中路径。
-- [ ] 测试目标：
-  - [ ] 确认 P0 Bug 只是任务配置里的 `base_jql`，不是场景代码固定逻辑。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 支持先用 `manage_tasks.py create --dry-run` 预演任务定义，不落盘任务状态。
+  - [x] 在隔离 `data_root` 中创建一个 P0 Bug 查询提醒任务。
+  - [x] 通过 fixture/dry-run 跑通命中路径。
+- [x] 测试目标：
+  - [x] 新增 `test_end_to_end_acceptance.py`，覆盖 create 预演、实际创建和 runner dry-run。
+  - [x] 确认 P0 Bug 只是任务配置里的 `base_jql`，不是场景代码固定逻辑。
+- [x] 验收命令：
 
 ```sh
+TMPDIR="$(mktemp -d)"
 python active-jira-automation/scripts/manage_tasks.py create \
+  --data-root "$TMPDIR" \
   --scenario jira-scheduled-query-alert \
   --task-name "Geneva P0 Bug Alert" \
   --project GENEVA \
   --filter-prompt "每小时查询一次 GENEVA 新增的 P0 Bug" \
   --base-jql 'project = GENEVA AND issuetype = Bug AND "Severity" = P0' \
+  --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"issuetype","op":"=","value":"Bug"},{"field":"Severity","op":"=","value":"P0"}]}' \
   --window-mode created \
   --schedule-type recurring \
   --schedule-expr '0 * * * *' \
   --target-chat-id oc_demo \
   --dry-run
+
+python active-jira-automation/scripts/manage_tasks.py create \
+  --data-root "$TMPDIR" \
+  --scenario jira-scheduled-query-alert \
+  --task-name "Geneva P0 Bug Alert" \
+  --project GENEVA \
+  --filter-prompt "每小时查询一次 GENEVA 新增的 P0 Bug" \
+  --base-jql 'project = GENEVA AND issuetype = Bug AND "Severity" = P0' \
+  --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"issuetype","op":"=","value":"Bug"},{"field":"Severity","op":"=","value":"P0"}]}' \
+  --window-mode created \
+  --schedule-type recurring \
+  --schedule-expr '0 * * * *' \
+  --target-chat-id oc_demo
+
+python active-jira-automation/scripts/run_automation_task.py "Geneva P0 Bug Alert" \
+  --data-root "$TMPDIR" \
+  --fixture-json active-jira-automation/tests/fixtures/jira_query_results.json \
+  --dry-run
 ```
 
 ### P7.2 跑通非 P0 样例
 
-- [ ] 代码目标：
-  - [ ] 创建一个非 P0、非 Bug 的查询提醒任务。
-  - [ ] 证明同一场景模块可以复用。
-- [ ] 测试目标：
-  - [ ] 覆盖例如 `assignee is EMPTY`、`labels = customer-escalation`、`status = Open` 等条件。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 在隔离 `data_root` 中创建一个非 P0、非 Bug 的查询提醒任务。
+  - [x] 证明同一场景模块可以复用。
+- [x] 测试目标：
+  - [x] `test_end_to_end_acceptance.py` 覆盖 `assignee is EMPTY` 的 updated 样例。
+  - [x] 场景单测已覆盖 `labels = customer-escalation`、`status = Open` 等条件。
+- [x] 验收命令：
 
 ```sh
+TMPDIR="$(mktemp -d)"
 python active-jira-automation/scripts/manage_tasks.py create \
+  --data-root "$TMPDIR" \
   --scenario jira-scheduled-query-alert \
   --task-name "Unassigned Updated Issues Alert" \
   --project GENEVA \
   --filter-prompt "每 30 分钟提醒最近有更新且 assignee 为空的 Jira" \
-  --base-jql 'project = GENEVA AND assignee is EMPTY' \
+  --base-jql 'project = GENEVA AND assignee IS EMPTY' \
+  --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"assignee","op":"IS","value":"EMPTY"}]}' \
   --window-mode updated \
   --schedule-type recurring \
   --schedule-expr '*/30 * * * *' \
   --target-chat-id oc_demo \
   --dry-run
+
+python active-jira-automation/scripts/manage_tasks.py create \
+  --data-root "$TMPDIR" \
+  --scenario jira-scheduled-query-alert \
+  --task-name "Unassigned Updated Issues Alert" \
+  --project GENEVA \
+  --filter-prompt "每 30 分钟提醒最近有更新且 assignee 为空的 Jira" \
+  --base-jql 'project = GENEVA AND assignee IS EMPTY' \
+  --query-spec-json '{"projects":["GENEVA"],"clauses":[{"field":"assignee","op":"IS","value":"EMPTY"}]}' \
+  --window-mode updated \
+  --schedule-type recurring \
+  --schedule-expr '*/30 * * * *' \
+  --target-chat-id oc_demo
+
+python active-jira-automation/scripts/run_automation_task.py "Unassigned Updated Issues Alert" \
+  --data-root "$TMPDIR" \
+  --fixture-json active-jira-automation/tests/fixtures/jira_query_results.json \
+  --dry-run
 ```
 
 ### P7.3 形成首期验收清单
 
-- [ ] 代码目标：
-  - [ ] 将框架文档和场景文档中的首期验收标准收敛成一份执行清单。
-  - [ ] 标记已满足、待验证、受阻项。
-- [ ] 测试目标：
-  - [ ] 验收清单能直接用于发布前 review。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 将框架文档和场景文档中的首期验收标准收敛成 [active-jira-automation 首期验收清单](./active-jira-automation%20首期验收清单.md)。
+  - [x] 标记已满足、待验证、受阻项。
+- [x] 测试目标：
+  - [x] 验收清单可直接用于发布前 review，并指向可执行回归命令。
+- [x] 验收命令：
 
 ```sh
-rg -n "首期落地范围|验收标准|jira-scheduled-query-alert" doc/active-jira-automation\ 框架能力设计.md doc/active-jira-automation\ 定时查询并提醒场景设计.md doc/active-jira-automation-todo.md
+python -m unittest discover active-jira-automation/tests -p 'test_end_to_end_acceptance.py'
+rg -n "首期落地范围|验收标准|首期验收清单|已满足|待验证|受阻" doc/active-jira-automation\ 框架能力设计.md doc/active-jira-automation\ 定时查询并提醒场景设计.md doc/active-jira-automation\ 首期验收清单.md doc/active-jira-automation-todo.md
 ```
 
 ## 13. 当前建议执行顺序

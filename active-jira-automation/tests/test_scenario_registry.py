@@ -58,6 +58,22 @@ class ScenarioRegistryTests(unittest.TestCase):
         with self.assertRaises(scenario_registry.ScenarioRegistryError):
             registry.get("missing-scenario")
 
+    def test_default_registry_registers_jira_scheduled_query_alert(self) -> None:
+        registry = scenario_registry.default_registry()
+
+        spec = registry.get("jira-scheduled-query-alert")
+        self.assertEqual(registry.list_keys(), ["jira-scheduled-query-alert"])
+        self.assertEqual(spec.message_template_key, "lark-jira-query-alert-card-v1")
+        self.assertTrue(callable(spec.query_builder))
+        self.assertTrue(callable(spec.result_normalizer))
+        self.assertTrue(callable(spec.match_identity))
+
+    def test_legacy_new_p0_bug_key_is_not_registered(self) -> None:
+        registry = scenario_registry.default_registry()
+
+        with self.assertRaisesRegex(scenario_registry.ScenarioRegistryError, "unknown scenario"):
+            registry.get("new-p0-bug-alert")
+
     def test_validate_rejects_blank_key(self) -> None:
         registry = scenario_registry.ScenarioRegistry()
         spec = make_spec(key="   ")

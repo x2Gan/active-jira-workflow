@@ -24,7 +24,7 @@ from jira_query_runtime import (  # noqa: E402
 )
 from lark_delivery_runtime import LarkDeliveryRuntime  # noqa: E402
 from llm_summary_runtime import LLMSummaryRuntime  # noqa: E402
-from scenario_registry import ScenarioRegistry, ScenarioRegistryError, ScenarioSpec  # noqa: E402
+from scenario_registry import ScenarioRegistry, ScenarioRegistryError, ScenarioSpec, default_registry  # noqa: E402
 from task_store import DEFAULT_DATA_ROOT, TaskStore, TaskStoreError, read_json, write_json  # noqa: E402
 
 
@@ -222,6 +222,7 @@ def run_task(
         normalized = normalize_results(scenario, raw_results, task, window)
         matches, fresh_identities = filter_new_matches(scenario, normalized, task, runtime_state)
         matches, skipped_by_limit = apply_notify_limit(matches, task)
+        delivered_identities = fresh_identities[: len(matches)]
 
         checkpoint_payload = checkpoint_update_payload(window)
         if not matches:
@@ -283,7 +284,7 @@ def run_task(
                 "skipped_by_limit": skipped_by_limit,
             }
         previous_identities = list(runtime_state.get("delivered_identities") or [])
-        next_identities = previous_identities + fresh_identities
+        next_identities = previous_identities + delivered_identities
         delivery_count = int(delivery_result.get("sent_count", len(cards) if not dry_run else 0))
         runtime = deps.store.write_runtime_state(
             task["task_id"],
@@ -345,7 +346,7 @@ def run_task(
 def build_default_dependencies(data_root: str | None = None) -> RunnerDependencies:
     return RunnerDependencies(
         store=TaskStore(data_root or DEFAULT_DATA_ROOT),
-        registry=ScenarioRegistry(),
+        registry=default_registry(),
         jira_client=UnconfiguredJiraClient(),
         summary_runtime=LLMSummaryRuntime(),
         delivery_runtime=LarkDeliveryRuntime(),

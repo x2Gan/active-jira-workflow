@@ -249,14 +249,14 @@ python -m unittest discover active-jira-automation/tests -p 'test_run_automation
 
 ### P4.1 实现场景接入模块
 
-- [ ] 代码目标：
-  - [ ] 新增 `scripts/scenarios/jira_scheduled_query_alert.py`。
-  - [ ] 实现 `config_schema/defaulting_rules/query_builder/result_normalizer/match_identity/llm_output_schema`。
-  - [ ] 不在模块中写死 P0、Bug、GENEVA 或特定状态。
-- [ ] 测试目标：
-  - [ ] 覆盖 P0 Bug 样例、Open Blocker 样例、assignee 为空样例、标签样例。
-  - [ ] 覆盖字段归一化、字段缺失兜底、去重键生成。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 新增 `scripts/scenarios/jira_scheduled_query_alert.py`。
+  - [x] 实现 `config_schema/defaulting_rules/query_builder/result_normalizer/match_identity/llm_output_schema`。
+  - [x] 不在模块中写死 P0、Bug、GENEVA 或特定状态。
+- [x] 测试目标：
+  - [x] 覆盖 P0 Bug 样例、Open Blocker 样例、assignee 为空样例、标签样例。
+  - [x] 覆盖字段归一化、字段缺失兜底、去重键生成。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_jira_scheduled_query_alert.py'
@@ -264,13 +264,13 @@ python -m unittest discover active-jira-automation/tests -p 'test_jira_scheduled
 
 ### P4.2 更新场景注册表
 
-- [ ] 代码目标：
-  - [ ] 注册 `jira-scheduled-query-alert`。
-  - [ ] 移除或降级旧 `new-p0-bug-alert` 注册。
-  - [ ] 确认 `message_template_key = lark-jira-query-alert-card-v1`。
-- [ ] 测试目标：
-  - [ ] 覆盖注册成功、读取未知场景失败、旧 key 兼容或明确报错。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 注册 `jira-scheduled-query-alert`。
+  - [x] 移除或降级旧 `new-p0-bug-alert` 注册。
+  - [x] 确认 `message_template_key = lark-jira-query-alert-card-v1`。
+- [x] 测试目标：
+  - [x] 覆盖注册成功、读取未知场景失败、旧 key 兼容或明确报错。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_scenario_registry.py'
@@ -278,13 +278,13 @@ python -m unittest discover active-jira-automation/tests -p 'test_scenario_regis
 
 ### P4.3 修正 runner 场景调用
 
-- [ ] 代码目标：
-  - [ ] runner 从任务定义读取 `base_jql/window_mode/notify_policy`。
-  - [ ] runner 只在命中后调用 LLM。
-  - [ ] runner 根据 `notify_policy.max_issues_per_run` 限制发送。
-- [ ] 测试目标：
-  - [ ] 覆盖无命中零 Token、有命中摘要、dry-run、不合法配置、超出上限。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] runner 从任务定义读取 `base_jql/window_mode/notify_policy`。
+  - [x] runner 只在命中后调用 LLM。
+  - [x] runner 根据 `notify_policy.max_issues_per_run` 限制发送。
+- [x] 测试目标：
+  - [x] 覆盖无命中零 Token、有命中摘要、dry-run、不合法配置、超出上限。
+- [x] 验收命令：
 
 ```sh
 python active-jira-automation/scripts/run_automation_task.py --help

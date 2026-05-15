@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+import sys
 from typing import Any
 
 
@@ -75,3 +77,17 @@ class ScenarioRegistry:
     def validate_registered(self) -> None:
         for spec in self._specs.values():
             validate_scenario_spec(spec)
+
+
+def register_default_scenarios(registry: ScenarioRegistry) -> ScenarioRegistry:
+    script_dir = Path(__file__).resolve().parent
+    if str(script_dir) not in sys.path:
+        sys.path.insert(0, str(script_dir))
+    from scenarios.jira_scheduled_query_alert import get_scenario_spec
+
+    registry.register(get_scenario_spec())
+    return registry
+
+
+def default_registry() -> ScenarioRegistry:
+    return register_default_scenarios(ScenarioRegistry())

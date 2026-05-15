@@ -300,7 +300,55 @@ class RunAutomationTaskTests(unittest.TestCase):
             self.assertEqual(result["skipped_by_limit"], 1)
             self.assertEqual(summary.calls, 1)
             self.assertEqual(delivery.calls, 1)
-            self.assertEqual(len(runtime["delivered_identities"]), 2)
+            self.assertEqual(len(runtime["delivered_identities"]), 1)
+
+    def test_invalid_notify_limit_fails_at_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            deps, _summary, _delivery = deps_for(
+                tmpdir,
+                [{"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z", "summary": "first"}],
+            )
+            task = deps.store.get_task("task-1")
+            task["notify_policy"]["max_issues_per_run"] = 0
+            runner.write_json(deps.store.paths_for("task-1").definition, task)
+
+            with self.assertRaisesRegex(runner.RunnerError, "max_issues_per_run"):
+                runner.run_task(
+                    "task-1",
+                    deps,
+                    current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+                )
+
+    def test_default_registered_scenario_runs_with_fixture_in_dry_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            deps = runner.build_default_dependencies(tmpdir)
+            deps.store.create_task(payload(), task_id="task-1", now=datetime(2026, 5, 14, 8, 0, tzinfo=timezone.utc))
+            deps.jira_client = runner.FixtureJiraClient(
+                {
+                    "issues": [
+                        {
+                            "key": "GENEVA-1",
+                            "fields": {
+                                "summary": "first",
+                                "created": "2026-05-14T08:30:00Z",
+                                "status": {"name": "Open"},
+                            },
+                        }
+                    ]
+                }
+            )
+
+            result = runner.run_task(
+                "task-1",
+                deps,
+                dry_run=True,
+                current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+            )
+
+            self.assertEqual(result["scenario_key"], "jira-scheduled-query-alert")
+            self.assertEqual(result["match_count"], 1)
+            self.assertEqual(result["delivery_result"]["card_count"], 1)
+            self.assertEqual(deps.jira_client.calls[0].split(" ORDER BY ")[-1], "created ASC")
 
     def test_unknown_task_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -153,7 +153,13 @@
 | `task_name` | 用户可读名称 | 是 |
 | `scenario_key` | 场景标识，例如 `jira-scheduled-query-alert` | 是 |
 | `project` | Jira 项目 Key | 是 |
-| `query_rule` | 结构化查询规则 | 是 |
+| `filter_prompt` | 用户原始自然语言筛选意图 | 是 |
+| `query_spec` | 可审计的结构化查询规格 | 是 |
+| `base_jql` | 不含运行窗口的基础 JQL | 是 |
+| `window_mode` | `created`、`updated` 或 `snapshot` | 是 |
+| `lookback_minutes` | 调度抖动回看窗口分钟数 | 是 |
+| `notify_policy` | 通知模式、单轮上限、存量重复提醒策略 | 是 |
+| `query_rule` | 旧任务兼容字段，新任务不再依赖 | 否 |
 | `schedule_type` | `recurring` 或 `once` | 是 |
 | `schedule_expr` | cron、间隔表达式或单次执行时间 | 是 |
 | `target_chat_id` | 飞书群稳定 ID | 是 |

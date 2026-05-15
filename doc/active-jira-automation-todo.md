@@ -149,16 +149,16 @@ rg -n "jira-scheduled-query-alert|new-p0-bug-alert" active-jira-automation/refer
 
 ### P2.1 扩展任务定义 schema
 
-- [ ] 代码目标：
-  - [ ] 在任务定义中支持 `filter_prompt`。
-  - [ ] 支持 `query_spec`。
-  - [ ] 支持 `base_jql`。
-  - [ ] 支持 `window_mode`：`created`、`updated`、`snapshot`。
-  - [ ] 支持 `lookback_minutes`。
-  - [ ] 支持 `notify_policy`：`mode`、`max_issues_per_run`、`repeat_snapshot`。
-- [ ] 测试目标：
-  - [ ] 覆盖最小合法任务、缺失 `base_jql`、非法 `window_mode`、非法 `notify_policy`。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 在任务定义中支持 `filter_prompt`。
+  - [x] 支持 `query_spec`。
+  - [x] 支持 `base_jql`。
+  - [x] 支持 `window_mode`：`created`、`updated`、`snapshot`。
+  - [x] 支持 `lookback_minutes`。
+  - [x] 支持 `notify_policy`：`mode`、`max_issues_per_run`、`repeat_snapshot`。
+- [x] 测试目标：
+  - [x] 覆盖最小合法任务、缺失 `base_jql`、非法 `window_mode`、非法 `notify_policy`。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_task_store.py'
@@ -166,17 +166,17 @@ python -m unittest discover active-jira-automation/tests -p 'test_task_store.py'
 
 ### P2.2 泛化 `manage_tasks.py create`
 
-- [ ] 代码目标：
-  - [ ] 将 `--scenario new-p0-bug-alert` 替换为 `--scenario jira-scheduled-query-alert`。
-  - [ ] 支持 `--filter-prompt`。
-  - [ ] 支持 `--base-jql`。
-  - [ ] 支持 `--query-spec-json` 或 `--query-spec-file`。
-  - [ ] 支持 `--window-mode` 和 `--lookback-minutes`。
-  - [ ] 支持 `--notify-policy-json`。
-  - [ ] 创建摘要输出 `base_jql` 与窗口语义，便于用户确认。
-- [ ] 测试目标：
-  - [ ] 覆盖 CLI 参数创建、JSON 输入创建、缺失必填字段报错、重复任务名处理。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 将 `--scenario new-p0-bug-alert` 替换为 `--scenario jira-scheduled-query-alert`。
+  - [x] 支持 `--filter-prompt`。
+  - [x] 支持 `--base-jql`。
+  - [x] 支持 `--query-spec-json` 或 `--query-spec-file`。
+  - [x] 支持 `--window-mode` 和 `--lookback-minutes`。
+  - [x] 支持 `--notify-policy-json`。
+  - [x] 创建摘要输出 `base_jql` 与窗口语义，便于用户确认。
+- [x] 测试目标：
+  - [x] 覆盖 CLI 参数创建、JSON 输入创建、缺失必填字段报错、重复任务名处理。
+- [x] 验收命令：
 
 ```sh
 python active-jira-automation/scripts/manage_tasks.py create --help
@@ -185,12 +185,12 @@ python -m unittest discover active-jira-automation/tests -p 'test_manage_tasks.p
 
 ### P2.3 兼容旧任务或明确迁移策略
 
-- [ ] 代码目标：
-  - [ ] 若存在旧 `new-p0-bug-alert` 任务，提供只读兼容或迁移提示。
-  - [ ] 明确不自动修改用户已有任务 JSON，除非用户执行迁移命令。
-- [ ] 测试目标：
-  - [ ] 旧任务读取不会导致 list/pause/delete 崩溃。
-- [ ] 验收命令：
+- [x] 代码目标：
+  - [x] 若存在旧 `new-p0-bug-alert` 任务，提供只读兼容或迁移提示。
+  - [x] 明确不自动修改用户已有任务 JSON，除非用户执行迁移命令。
+- [x] 测试目标：
+  - [x] 旧任务读取不会导致 list/pause/delete 崩溃。
+- [x] 验收命令：
 
 ```sh
 python -m unittest discover active-jira-automation/tests -p 'test_manage_tasks.py'

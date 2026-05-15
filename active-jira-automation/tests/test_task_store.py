@@ -22,6 +22,18 @@ def sample_payload(name: str = "Geneva P0 Bug Alert") -> dict[str, object]:
         "task_name": name,
         "scenario_key": "jira-scheduled-query-alert",
         "project": "GENEVA",
+        "filter_prompt": "每小时查询一次 GENEVA 新增的 P0 Bug",
+        "query_spec": {
+            "projects": ["GENEVA"],
+            "clauses": [
+                {"field": "issuetype", "op": "=", "value": "Bug"},
+                {"field": "Severity", "op": "=", "value": "P0"},
+            ],
+        },
+        "base_jql": 'project = GENEVA AND issuetype = Bug AND "Severity" = P0',
+        "window_mode": "created",
+        "lookback_minutes": 5,
+        "notify_policy": {"mode": "per_issue", "max_issues_per_run": 20, "repeat_snapshot": False},
         "query_rule": {"issue_type": "Bug", "severity": "P0"},
         "schedule_type": "recurring",
         "schedule_expr": "0 * * * *",
@@ -92,6 +104,65 @@ class TaskStoreTests(unittest.TestCase):
 
             with self.assertRaises(task_store.TaskConflictError):
                 store.create_task(sample_payload(), task_id="task-2")
+
+    def test_minimum_generalized_task_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = task_store.TaskStore(tmpdir)
+            payload = sample_payload("General Query Alert")
+            payload.pop("query_rule")
+
+            task = store.create_task(payload, task_id="task-1")
+
+            self.assertEqual(task["filter_prompt"], "每小时查询一次 GENEVA 新增的 P0 Bug")
+            self.assertEqual(task["window_mode"], "created")
+            self.assertEqual(task["lookback_minutes"], 5)
+
+    def test_missing_base_jql_fails(self) -> None:
+        payload = sample_payload()
+        payload.pop("base_jql")
+
+        with self.assertRaisesRegex(task_store.TaskValidationError, "base_jql"):
+            task_store.validate_task_payload(payload)
+
+    def test_invalid_window_mode_fails(self) -> None:
+        payload = sample_payload()
+        payload["window_mode"] = "recent"
+
+        with self.assertRaisesRegex(task_store.TaskValidationError, "window_mode"):
+            task_store.validate_task_payload(payload)
+
+    def test_invalid_notify_policy_fails(self) -> None:
+        payload = sample_payload()
+        payload["notify_policy"] = {"mode": "per_issue", "max_issues_per_run": 0}
+
+        with self.assertRaisesRegex(task_store.TaskValidationError, "max_issues_per_run"):
+            task_store.validate_task_payload(payload)
+
+    def test_legacy_task_lifecycle_does_not_require_new_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = task_store.TaskStore(tmpdir)
+            legacy_task = {
+                "task_id": "legacy-task",
+                "task_name": "Legacy P0 Bug Alert",
+                "scenario_key": "new-p0-bug-alert",
+                "project": "GENEVA",
+                "query_rule": {"issue_type": "Bug", "severity": "P0"},
+                "schedule_type": "recurring",
+                "schedule_expr": "0 * * * *",
+                "target_chat_id": "oc_123",
+                "message_template_key": "lark-p0-bug-card-v1",
+                "llm_policy": "on-match-only",
+                "status": "enabled",
+                "created_at": "2026-05-14T08:00:00Z",
+                "updated_at": "2026-05-14T08:00:00Z",
+            }
+            task_store.write_json(Path(tmpdir) / "tasks" / "legacy-task.json", legacy_task)
+
+            paused = store.update_status("legacy-task", "paused")
+            deleted = store.update_status("legacy-task", "deleted")
+
+            self.assertEqual(paused["status"], "paused")
+            self.assertEqual(deleted["status"], "deleted")
 
 
 if __name__ == "__main__":

@@ -42,8 +42,18 @@ def create_args(tmpdir: str, name: str = "Geneva P0 Bug Alert") -> list[str]:
         "jira-scheduled-query-alert",
         "--project",
         "GENEVA",
-        "--query-rule",
-        '{"issue_type":"Bug","severity":"P0"}',
+        "--filter-prompt",
+        "每小时查询一次 GENEVA 新增的 P0 Bug",
+        "--base-jql",
+        'project = GENEVA AND issuetype = Bug AND "Severity" = P0',
+        "--query-spec-json",
+        '{"projects":["GENEVA"],"clauses":[{"field":"issuetype","op":"=","value":"Bug"},{"field":"Severity","op":"=","value":"P0"}]}',
+        "--window-mode",
+        "created",
+        "--lookback-minutes",
+        "5",
+        "--notify-policy-json",
+        '{"mode":"per_issue","max_issues_per_run":20,"repeat_snapshot":false}',
         "--schedule-type",
         "recurring",
         "--schedule-expr",
@@ -66,6 +76,9 @@ class ManageTasksTests(unittest.TestCase):
             self.assertTrue(created["created"])
             self.assertEqual(created["task"]["message_template_key"], "lark-jira-query-alert-card-v1")
             self.assertEqual(created["task"]["llm_policy"], "on-match-only")
+            self.assertEqual(created["task"]["base_jql"], 'project = GENEVA AND issuetype = Bug AND "Severity" = P0')
+            self.assertEqual(created["task"]["window_mode"], "created")
+            self.assertEqual(created["task"]["notify_policy"]["max_issues_per_run"], 20)
             self.assertEqual(listed["tasks"][0]["task_name"], "Geneva P0 Bug Alert")
             self.assertEqual(listed["tasks"][0]["status"], "enabled")
 
@@ -82,8 +95,12 @@ class ManageTasksTests(unittest.TestCase):
                     "jira-scheduled-query-alert",
                     "--project",
                     "GENEVA",
-                    "--query-rule",
-                    '{"issue_type":"Bug","severity":"P0"}',
+                    "--filter-prompt",
+                    "每小时查询一次 GENEVA 新增的 P0 Bug",
+                    "--base-jql",
+                    'project = GENEVA AND issuetype = Bug AND "Severity" = P0',
+                    "--query-spec-json",
+                    '{"projects":["GENEVA"],"clauses":[{"field":"issuetype","op":"=","value":"Bug"}]}',
                     "--schedule-type",
                     "recurring",
                     "--schedule-expr",
@@ -150,7 +167,18 @@ class ManageTasksTests(unittest.TestCase):
                         "task_name": "Input JSON Task",
                         "scenario_key": "jira-scheduled-query-alert",
                         "project": "GENEVA",
-                        "query_rule": {"issue_type": "Bug", "severity": "P0"},
+                        "filter_prompt": "每天检查一次当前未分配的 GENEVA Bug",
+                        "query_spec": {
+                            "projects": ["GENEVA"],
+                            "clauses": [
+                                {"field": "issuetype", "op": "=", "value": "Bug"},
+                                {"field": "assignee", "op": "IS", "value": "EMPTY"},
+                            ],
+                        },
+                        "base_jql": "project = GENEVA AND issuetype = Bug AND assignee IS EMPTY",
+                        "window_mode": "snapshot",
+                        "lookback_minutes": 5,
+                        "notify_policy": {"mode": "per_issue", "max_issues_per_run": 10, "repeat_snapshot": False},
                         "schedule_type": "once",
                         "schedule_expr": "2026-05-14T20:00:00+08:00",
                         "target_chat_id": "oc_456",
@@ -163,6 +191,107 @@ class ManageTasksTests(unittest.TestCase):
 
             self.assertEqual(code, 0, err)
             self.assertEqual(json.loads(out)["task"]["task_name"], "Input JSON Task")
+
+    def test_create_supports_query_spec_file_and_default_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            query_spec_path = Path(tmpdir) / "query-spec.json"
+            query_spec_path.write_text(
+                json.dumps(
+                    {
+                        "projects": ["GENEVA"],
+                        "clauses": [{"field": "labels", "op": "=", "value": "customer-escalation"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            code, out, err = run_cli(
+                [
+                    "create",
+                    "--data-root",
+                    tmpdir,
+                    "--task-name",
+                    "Escalation Alert",
+                    "--scenario",
+                    "jira-scheduled-query-alert",
+                    "--project",
+                    "GENEVA",
+                    "--filter-prompt",
+                    "每小时提醒带 customer-escalation 标签的新 Jira",
+                    "--base-jql",
+                    "project = GENEVA AND labels = customer-escalation",
+                    "--query-spec-file",
+                    str(query_spec_path),
+                    "--schedule-type",
+                    "recurring",
+                    "--schedule-expr",
+                    "0 * * * *",
+                    "--target-chat-id",
+                    "oc_789",
+                ]
+            )
+
+            task = json.loads(out)["task"]
+            self.assertEqual(code, 0, err)
+            self.assertEqual(task["window_mode"], "created")
+            self.assertEqual(task["lookback_minutes"], 5)
+            self.assertEqual(task["notify_policy"]["mode"], "per_issue")
+
+    def test_create_missing_base_jql_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = create_args(tmpdir)
+            base_jql_index = args.index("--base-jql")
+            del args[base_jql_index : base_jql_index + 2]
+
+            code, _out, err = run_cli(args)
+
+            self.assertEqual(code, 1)
+            self.assertIn("base_jql", err)
+
+    def test_create_rejects_legacy_scenario_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = create_args(tmpdir)
+            args[args.index("jira-scheduled-query-alert")] = "new-p0-bug-alert"
+
+            code, _out, err = run_cli(args)
+
+            self.assertEqual(code, 1)
+            self.assertIn("deprecated", err)
+
+    def test_old_task_can_be_listed_paused_and_deleted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            task_path = Path(tmpdir) / "tasks" / "legacy-task.json"
+            task_path.parent.mkdir(parents=True)
+            task_path.write_text(
+                json.dumps(
+                    {
+                        "task_id": "legacy-task",
+                        "task_name": "Legacy P0 Bug Alert",
+                        "scenario_key": "new-p0-bug-alert",
+                        "project": "GENEVA",
+                        "query_rule": {"issue_type": "Bug", "severity": "P0"},
+                        "schedule_type": "recurring",
+                        "schedule_expr": "0 * * * *",
+                        "target_chat_id": "oc_123",
+                        "message_template_key": "lark-p0-bug-card-v1",
+                        "llm_policy": "on-match-only",
+                        "status": "enabled",
+                        "created_at": "2026-05-14T08:00:00Z",
+                        "updated_at": "2026-05-14T08:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            list_code, list_out, list_err = run_cli(["list", "--data-root", tmpdir])
+            pause_code, pause_out, pause_err = run_cli(["pause", "--data-root", tmpdir, "legacy-task"])
+            delete_code, _delete_out, delete_err = run_cli(["delete", "--data-root", tmpdir, "legacy-task", "--confirm"])
+
+            self.assertEqual(list_code, 0, list_err)
+            self.assertEqual(pause_code, 0, pause_err)
+            self.assertEqual(delete_code, 0, delete_err)
+            self.assertEqual(json.loads(list_out)["tasks"][0]["scenario_key"], "new-p0-bug-alert")
+            self.assertEqual(json.loads(pause_out)["task"]["status"], "paused")
 
 
 if __name__ == "__main__":

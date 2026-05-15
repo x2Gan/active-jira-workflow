@@ -17,6 +17,9 @@ DEFAULT_DATA_ROOT = SKILL_ROOT / "data"
 
 TASK_STATUSES = {"enabled", "paused", "deleted"}
 SCHEDULE_TYPES = {"recurring", "once"}
+WINDOW_MODES = {"created", "updated", "snapshot"}
+NOTIFY_POLICY_MODES = {"per_issue", "batch_summary"}
+LEGACY_SCENARIO_KEYS = {"new-p0-bug-alert"}
 ALLOWED_TRANSITIONS = {
     "enabled": {"paused", "deleted"},
     "paused": {"enabled", "deleted"},
@@ -26,7 +29,12 @@ REQUIRED_TASK_FIELDS = (
     "task_name",
     "scenario_key",
     "project",
-    "query_rule",
+    "filter_prompt",
+    "query_spec",
+    "base_jql",
+    "window_mode",
+    "lookback_minutes",
+    "notify_policy",
     "schedule_type",
     "schedule_expr",
     "target_chat_id",
@@ -103,6 +111,13 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def validate_task_payload(payload: dict[str, Any]) -> None:
+    scenario_key = payload.get("scenario_key")
+    if scenario_key in LEGACY_SCENARIO_KEYS:
+        raise TaskValidationError(
+            f"scenario_key {scenario_key} is deprecated; "
+            "create jira-scheduled-query-alert tasks instead"
+        )
+
     missing = [field for field in REQUIRED_TASK_FIELDS if payload.get(field) in (None, "", [], {})]
     if missing:
         raise TaskValidationError(f"missing required task field(s): {', '.join(missing)}")
@@ -111,6 +126,9 @@ def validate_task_payload(payload: dict[str, Any]) -> None:
         "task_name",
         "scenario_key",
         "project",
+        "filter_prompt",
+        "base_jql",
+        "window_mode",
         "schedule_type",
         "schedule_expr",
         "target_chat_id",
@@ -123,8 +141,37 @@ def validate_task_payload(payload: dict[str, Any]) -> None:
     if payload["schedule_type"] not in SCHEDULE_TYPES:
         raise TaskValidationError(f"schedule_type must be one of: {', '.join(sorted(SCHEDULE_TYPES))}")
 
-    if not isinstance(payload.get("query_rule"), dict):
+    if payload["window_mode"] not in WINDOW_MODES:
+        raise TaskValidationError(f"window_mode must be one of: {', '.join(sorted(WINDOW_MODES))}")
+
+    try:
+        lookback_minutes = int(payload["lookback_minutes"])
+    except (TypeError, ValueError) as exc:
+        raise TaskValidationError("lookback_minutes must be a non-negative integer") from exc
+    if lookback_minutes < 0:
+        raise TaskValidationError("lookback_minutes must be a non-negative integer")
+    payload["lookback_minutes"] = lookback_minutes
+
+    if not isinstance(payload.get("query_spec"), dict):
+        raise TaskValidationError("query_spec must be a JSON object")
+
+    if "query_rule" in payload and not isinstance(payload.get("query_rule"), dict):
         raise TaskValidationError("query_rule must be a JSON object")
+
+    notify_policy = payload.get("notify_policy")
+    if not isinstance(notify_policy, dict):
+        raise TaskValidationError("notify_policy must be a JSON object")
+    if not isinstance(notify_policy.get("mode"), str) or notify_policy["mode"] not in NOTIFY_POLICY_MODES:
+        raise TaskValidationError(f"notify_policy.mode must be one of: {', '.join(sorted(NOTIFY_POLICY_MODES))}")
+    try:
+        max_issues_per_run = int(notify_policy.get("max_issues_per_run"))
+    except (TypeError, ValueError) as exc:
+        raise TaskValidationError("notify_policy.max_issues_per_run must be a positive integer") from exc
+    if max_issues_per_run <= 0:
+        raise TaskValidationError("notify_policy.max_issues_per_run must be a positive integer")
+    notify_policy["max_issues_per_run"] = max_issues_per_run
+    if "repeat_snapshot" in notify_policy and not isinstance(notify_policy["repeat_snapshot"], bool):
+        raise TaskValidationError("notify_policy.repeat_snapshot must be a boolean")
 
     status = payload.get("status", "enabled")
     if status not in TASK_STATUSES:

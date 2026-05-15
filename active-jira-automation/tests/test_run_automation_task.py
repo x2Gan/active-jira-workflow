@@ -29,6 +29,18 @@ def payload(scenario_key: str = "jira-scheduled-query-alert") -> dict[str, objec
         "task_name": "Geneva P0 Bug Alert",
         "scenario_key": scenario_key,
         "project": "GENEVA",
+        "filter_prompt": "每小时查询一次 GENEVA 新增的 P0 Bug",
+        "query_spec": {
+            "projects": ["GENEVA"],
+            "clauses": [
+                {"field": "issuetype", "op": "=", "value": "Bug"},
+                {"field": "Severity", "op": "=", "value": "P0"},
+            ],
+        },
+        "base_jql": 'project = GENEVA AND issuetype = Bug AND "Severity" = P0',
+        "window_mode": "created",
+        "lookback_minutes": 5,
+        "notify_policy": {"mode": "per_issue", "max_issues_per_run": 20, "repeat_snapshot": False},
         "query_rule": {"issue_type": "Bug", "severity": "P0"},
         "schedule_type": "recurring",
         "schedule_expr": "0 * * * *",

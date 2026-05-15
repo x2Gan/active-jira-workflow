@@ -7,8 +7,9 @@ import argparse
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import subprocess
 import sys
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -34,7 +35,7 @@ class RunnerError(RuntimeError):
 
 class JiraClient(Protocol):
     def query(self, query: Any, window: QueryWindow, task: dict[str, Any]) -> list[Any]:
-        """Return raw Jira records for the scenario query."""
+        """Return Jira query hits, preferably key plus window identity fields."""
 
 
 class SummaryRuntime(Protocol):
@@ -67,6 +68,75 @@ class UnconfiguredJiraClient:
         raise RunnerError("jira_client is not configured")
 
 
+def extract_issue_items(raw: Any) -> list[Any]:
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        for key in ("issues", "data", "values"):
+            value = raw.get(key)
+            if isinstance(value, list):
+                return value
+        if "key" in raw:
+            return [raw]
+    return []
+
+
+def query_hit_from_issue(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    fields = raw.get("fields") if isinstance(raw.get("fields"), dict) else raw
+    key = raw.get("key") or raw.get("issue_key") or fields.get("key")
+    hit = {"key": key}
+    created = raw.get("created_at") or raw.get("created") or fields.get("created")
+    updated = raw.get("updated_at") or raw.get("updated") or fields.get("updated")
+    if created:
+        hit["created_at"] = created
+    if updated:
+        hit["updated_at"] = updated
+    return hit
+
+
+def default_command_runner(cmd: list[str]) -> str:
+    proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        raise RunnerError(f"command failed with exit code {proc.returncode}: {err}")
+    return proc.stdout
+
+
+class JiraCliClient:
+    """Jira client backed by the local active-jira/jira-cli capability."""
+
+    def __init__(self, *, jira_bin: str = "jira", command_runner: Callable[[list[str]], str] | None = None) -> None:
+        self.jira_bin = jira_bin
+        self.command_runner = command_runner or default_command_runner
+        self.calls: list[list[str]] = []
+
+    def _run_json(self, cmd: list[str]) -> Any:
+        self.calls.append(cmd)
+        output = self.command_runner(cmd).strip()
+        if not output:
+            return []
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError as exc:
+            raise RunnerError(f"could not parse jira-cli JSON output: {exc}") from exc
+
+    def query(self, query: Any, window: QueryWindow, task: dict[str, Any]) -> list[Any]:
+        if not isinstance(query, str) or not query.strip():
+            raise RunnerError("jira query must be a non-empty JQL string")
+        raw = self._run_json([self.jira_bin, "issue", "list", "--raw", "-q", query])
+        return [hit for hit in (query_hit_from_issue(item) for item in extract_issue_items(raw)) if hit.get("key")]
+
+    def fetch_details(self, issue_keys: list[str], task: dict[str, Any]) -> list[Any]:
+        details: list[Any] = []
+        for key in issue_keys:
+            raw = self._run_json([self.jira_bin, "issue", "view", key, "--raw"])
+            items = extract_issue_items(raw)
+            details.append(items[0] if items else raw)
+        return details
+
+
 class FixtureJiraClient:
     """Local Jira client for deterministic dry-run and tests.
 
@@ -78,6 +148,7 @@ class FixtureJiraClient:
     def __init__(self, fixture: Any) -> None:
         self.fixture = fixture
         self.calls: list[Any] = []
+        self.detail_calls: list[list[str]] = []
 
     @classmethod
     def from_file(cls, path: str | Path) -> "FixtureJiraClient":
@@ -99,6 +170,8 @@ class FixtureJiraClient:
             raise RunnerError("fixture JSON must be a list or object")
         if isinstance(fixture.get("issues"), list):
             return fixture["issues"]
+        if isinstance(fixture.get("query_hits"), list):
+            return fixture["query_hits"]
         if isinstance(fixture.get("queries"), list):
             query_text = query if isinstance(query, str) else json.dumps(query, ensure_ascii=False, sort_keys=True)
             for candidate in fixture["queries"]:
@@ -107,11 +180,30 @@ class FixtureJiraClient:
                 contains = candidate.get("contains")
                 if isinstance(contains, str) and contains in query_text:
                     issues = candidate.get("issues", [])
+                    if "query_hits" in candidate:
+                        issues = candidate.get("query_hits", [])
                     if not isinstance(issues, list):
                         raise RunnerError("fixture query issues must be a list")
                     return issues
             return []
         raise RunnerError("fixture JSON must contain issues or queries")
+
+    def fetch_details(self, issue_keys: list[str], task: dict[str, Any]) -> list[Any]:
+        self.detail_calls.append(list(issue_keys))
+        fixture = self.fixture
+        if not isinstance(fixture, dict):
+            return []
+        details = fixture.get("details")
+        if isinstance(details, dict):
+            return [details[key] for key in issue_keys if key in details]
+        if isinstance(details, list):
+            details_by_key = {_issue_key(item): item for item in details if isinstance(item, dict)}
+            return [details_by_key[key] for key in issue_keys if key in details_by_key]
+        issues = fixture.get("issues")
+        if isinstance(issues, list):
+            details_by_key = {_issue_key(item): item for item in issues if isinstance(item, dict)}
+            return [details_by_key[key] for key in issue_keys if key in details_by_key]
+        return []
 
 
 def load_runtime_state(store: TaskStore, task_id: str) -> dict[str, Any]:
@@ -142,6 +234,55 @@ def normalize_results(scenario: ScenarioSpec, raw_results: list[Any], task: dict
     if not all(isinstance(item, dict) for item in normalized):
         raise RunnerError("scenario result_normalizer must return dictionaries")
     return normalized
+
+
+def _issue_key(record: Any) -> str:
+    if not isinstance(record, dict):
+        return ""
+    value = record.get("key") or record.get("issue_key")
+    if not value and isinstance(record.get("fields"), dict):
+        value = record["fields"].get("key")
+    return str(value) if value not in (None, "") else ""
+
+
+def fetch_issue_details(jira_client: JiraClient, issue_keys: list[str], task: dict[str, Any]) -> list[Any]:
+    fetcher = getattr(jira_client, "fetch_details", None)
+    if not callable(fetcher) or not issue_keys:
+        return []
+    details = fetcher(issue_keys, task)
+    if not isinstance(details, list):
+        raise RunnerError("jira_client.fetch_details must return a list")
+    return details
+
+
+def enrich_matches(
+    scenario: ScenarioSpec,
+    matches: list[dict[str, Any]],
+    jira_client: JiraClient,
+    task: dict[str, Any],
+    window: QueryWindow,
+) -> list[dict[str, Any]]:
+    issue_keys = [_issue_key(match) for match in matches]
+    issue_keys = [key for key in issue_keys if key]
+    raw_details = fetch_issue_details(jira_client, issue_keys, task)
+    if not raw_details:
+        return matches
+
+    normalized_details = normalize_results(scenario, raw_details, task, window)
+    details_by_key = {_issue_key(detail): detail for detail in normalized_details}
+    enriched: list[dict[str, Any]] = []
+    for match in matches:
+        key = _issue_key(match)
+        detail = details_by_key.get(key)
+        if detail is None:
+            enriched.append(match)
+            continue
+        identity = match.get("_identity")
+        merged = {**match, **detail}
+        if identity:
+            merged["_identity"] = identity
+        enriched.append(merged)
+    return enriched
 
 
 def identity_for(scenario: ScenarioSpec, match: dict[str, Any], task: dict[str, Any]) -> str:
@@ -223,6 +364,7 @@ def run_task(
         matches, fresh_identities = filter_new_matches(scenario, normalized, task, runtime_state)
         matches, skipped_by_limit = apply_notify_limit(matches, task)
         delivered_identities = fresh_identities[: len(matches)]
+        matches = enrich_matches(scenario, matches, deps.jira_client, task, window)
 
         checkpoint_payload = checkpoint_update_payload(window)
         if not matches:
@@ -359,6 +501,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT), help="Task data root.")
     parser.add_argument("--dry-run", action="store_true", help="Render and validate without real delivery.")
     parser.add_argument("--fixture-json", help="Read Jira query results from a local fixture JSON file.")
+    parser.add_argument("--jira-bin", help="Use local jira-cli binary for query hits and detail enrichment.")
     return parser
 
 
@@ -368,6 +511,8 @@ def main(argv: list[str] | None = None) -> int:
     deps = build_default_dependencies(args.data_root)
     if args.fixture_json:
         deps.jira_client = FixtureJiraClient.from_file(args.fixture_json)
+    elif args.jira_bin:
+        deps.jira_client = JiraCliClient(jira_bin=args.jira_bin)
     try:
         result = run_task(args.task, deps, dry_run=args.dry_run)
     except (RunnerError, TaskStoreError, ScenarioRegistryError) as exc:

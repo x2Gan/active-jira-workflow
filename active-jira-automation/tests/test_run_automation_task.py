@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import importlib.util
+import json
 import sys
 from pathlib import Path
 import tempfile
@@ -53,13 +54,19 @@ def payload(scenario_key: str = "jira-scheduled-query-alert") -> dict[str, objec
 
 
 class FakeJiraClient:
-    def __init__(self, results: list[dict[str, object]]) -> None:
+    def __init__(self, results: list[dict[str, object]], details: dict[str, dict[str, object]] | None = None) -> None:
         self.results = results
+        self.details = details or {}
         self.calls: list[object] = []
+        self.detail_calls: list[list[str]] = []
 
     def query(self, query: object, window: object, task: dict[str, object]) -> list[dict[str, object]]:
         self.calls.append(query)
         return self.results
+
+    def fetch_details(self, issue_keys: list[str], task: dict[str, object]) -> list[dict[str, object]]:
+        self.detail_calls.append(list(issue_keys))
+        return [self.details[key] for key in issue_keys if key in self.details]
 
 
 class FakeSummaryRuntime:
@@ -150,6 +157,7 @@ class RunAutomationTaskTests(unittest.TestCase):
             self.assertEqual(delivery.calls, 0)
             self.assertEqual(runtime["last_checkpoint"], "2026-05-14T09:00:00Z")
             self.assertEqual(task["last_checkpoint"], "2026-05-14T09:00:00Z")
+            self.assertEqual(deps.jira_client.detail_calls, [])
             self.assertEqual(
                 deps.jira_client.calls[0],
                 '(project = GENEVA AND issuetype = Bug AND "Severity" = P0) '
@@ -180,6 +188,31 @@ class RunAutomationTaskTests(unittest.TestCase):
             self.assertEqual(summary.calls, 1)
             self.assertEqual(delivery.calls, 1)
             self.assertEqual(len(runtime["delivered_identities"]), 1)
+
+    def test_key_only_query_hits_are_enriched_before_summary_and_delivery(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = TaskStore(tmpdir)
+            store.create_task(payload(), task_id="task-1", now=datetime(2026, 5, 14, 8, 0, tzinfo=timezone.utc))
+            registry = ScenarioRegistry()
+            registry.register(build_spec())
+            summary = FakeSummaryRuntime()
+            delivery = FakeDeliveryRuntime()
+            jira = FakeJiraClient(
+                [{"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z"}],
+                details={"GENEVA-1": {"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z", "summary": "detail summary"}},
+            )
+            deps = runner.RunnerDependencies(store, registry, jira, summary, delivery)
+
+            result = runner.run_task(
+                "task-1",
+                deps,
+                current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+            )
+
+            self.assertEqual(result["match_count"], 1)
+            self.assertEqual(jira.detail_calls, [["GENEVA-1"]])
+            self.assertEqual(summary.calls, 1)
+            self.assertEqual(delivery.calls, 1)
 
     def test_updated_mode_dedupes_by_updated_timestamp(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -270,11 +303,54 @@ class RunAutomationTaskTests(unittest.TestCase):
         single = runner.FixtureJiraClient({"issues": [{"key": "GENEVA-1"}]})
         multiple = runner.FixtureJiraClient([{"key": "GENEVA-1"}, {"key": "GENEVA-2"}])
         from_file = runner.FixtureJiraClient.from_file(FIXTURE_FILE)
+        key_only = runner.FixtureJiraClient(
+            {
+                "query_hits": [{"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z"}],
+                "details": {"GENEVA-1": {"key": "GENEVA-1", "summary": "detail"}},
+            }
+        )
 
         self.assertEqual(no_match.query("project = GENEVA", object(), {}), [])
         self.assertEqual(single.query("project = GENEVA", object(), {}), [{"key": "GENEVA-1"}])
         self.assertEqual(len(multiple.query("project = GENEVA", object(), {})), 2)
         self.assertEqual(len(from_file.query("project = GENEVA", object(), {})), 2)
+        self.assertEqual(key_only.query("project = GENEVA", object(), {}), [{"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z"}])
+        self.assertEqual(key_only.fetch_details(["GENEVA-1"], {}), [{"key": "GENEVA-1", "summary": "detail"}])
+
+    def test_jira_cli_client_queries_key_hits_and_fetches_details(self) -> None:
+        outputs = {
+            ("jira", "issue", "list", "--raw", "-q", "project = GENEVA"): json.dumps(
+                {
+                    "issues": [
+                        {
+                            "key": "GENEVA-1",
+                            "fields": {
+                                "summary": "list summary",
+                                "created": "2026-05-14T08:30:00Z",
+                                "updated": "2026-05-14T08:45:00Z",
+                            },
+                        }
+                    ]
+                }
+            ),
+            ("jira", "issue", "view", "GENEVA-1", "--raw"): json.dumps(
+                {"key": "GENEVA-1", "fields": {"summary": "detail summary"}}
+            ),
+        }
+
+        def command_runner(cmd: list[str]) -> str:
+            return outputs[tuple(cmd)]
+
+        client = runner.JiraCliClient(command_runner=command_runner)
+
+        self.assertEqual(
+            client.query("project = GENEVA", object(), {}),
+            [{"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z", "updated_at": "2026-05-14T08:45:00Z"}],
+        )
+        self.assertEqual(
+            client.fetch_details(["GENEVA-1"], {}),
+            [{"key": "GENEVA-1", "fields": {"summary": "detail summary"}}],
+        )
 
     def test_notify_policy_limits_fixture_match_delivery(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -302,6 +378,36 @@ class RunAutomationTaskTests(unittest.TestCase):
             self.assertEqual(delivery.calls, 1)
             self.assertEqual(len(runtime["delivered_identities"]), 1)
 
+    def test_detail_fetch_happens_after_notify_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = TaskStore(tmpdir)
+            task_payload = payload()
+            task_payload["notify_policy"]["max_issues_per_run"] = 1
+            store.create_task(task_payload, task_id="task-1", now=datetime(2026, 5, 14, 8, 0, tzinfo=timezone.utc))
+            registry = ScenarioRegistry()
+            registry.register(build_spec())
+            jira = FakeJiraClient(
+                [
+                    {"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z"},
+                    {"key": "GENEVA-2", "created_at": "2026-05-14T08:31:00Z"},
+                ],
+                details={
+                    "GENEVA-1": {"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z", "summary": "one"},
+                    "GENEVA-2": {"key": "GENEVA-2", "created_at": "2026-05-14T08:31:00Z", "summary": "two"},
+                },
+            )
+            deps = runner.RunnerDependencies(store, registry, jira, FakeSummaryRuntime(), FakeDeliveryRuntime())
+
+            result = runner.run_task(
+                "task-1",
+                deps,
+                current_time=datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+            )
+
+            self.assertEqual(result["match_count"], 1)
+            self.assertEqual(result["skipped_by_limit"], 1)
+            self.assertEqual(jira.detail_calls, [["GENEVA-1"]])
+
     def test_invalid_notify_limit_fails_at_runtime(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             deps, _summary, _delivery = deps_for(
@@ -325,8 +431,11 @@ class RunAutomationTaskTests(unittest.TestCase):
             deps.store.create_task(payload(), task_id="task-1", now=datetime(2026, 5, 14, 8, 0, tzinfo=timezone.utc))
             deps.jira_client = runner.FixtureJiraClient(
                 {
-                    "issues": [
-                        {
+                    "query_hits": [
+                        {"key": "GENEVA-1", "created_at": "2026-05-14T08:30:00Z"}
+                    ],
+                    "details": {
+                        "GENEVA-1": {
                             "key": "GENEVA-1",
                             "fields": {
                                 "summary": "first",
@@ -334,7 +443,7 @@ class RunAutomationTaskTests(unittest.TestCase):
                                 "status": {"name": "Open"},
                             },
                         }
-                    ]
+                    },
                 }
             )
 

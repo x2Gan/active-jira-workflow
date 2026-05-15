@@ -124,7 +124,9 @@ Current supported scenario: `jira-scheduled-query-alert`.
 Execution rules:
 
 - Build final runtime JQL from confirmed `base_jql` plus the `window_mode` query window.
-- Query and dedupe deterministically before any LLM call.
+- Query only Jira keys plus window identity fields (`created_at`/`updated_at`) first.
+- Dedupe and apply `notify_policy.max_issues_per_run` before fetching details.
+- Fetch card fields by Jira key through the active-jira layer or local `jira issue view <KEY> --raw`.
 - Do not call LLM when there are no matches.
 - For matches, allow LLM to produce only limited summary fields.
 - The final outgoing Feishu/Lark message must be an `interactive` card.

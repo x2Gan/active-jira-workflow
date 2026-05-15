@@ -175,6 +175,18 @@ ORDER BY <window_field> ASC
 - `window_mode = updated` 时，`window_field = updated`。
 - `window_mode = snapshot` 时，不追加时间窗口，只执行 `base_jql`，但必须依赖去重和通知策略避免重复刷屏。
 
+### 5.5 命中查询与详情补全分层
+
+运行期查询脚本只负责回答“本轮命中了哪些 Jira”，推荐输出最小命中对象：
+
+```json
+[
+  {"key": "GENEVA-2034", "created_at": "2026-05-15T06:18:00Z", "updated_at": "2026-05-15T06:30:00Z"}
+]
+```
+
+其中 `created_at/updated_at` 用于窗口模式去重；卡片所需的 Summary、负责人、Reporter、Severity、Priority、状态、影响版本、归属团队等详情，应在去重和单轮上限过滤之后，再通过 `active-jira`/本地 `jira issue view <KEY> --raw` 补全。这样零命中、重复命中和超出上限的 Jira 都不会触发详情拉取、LLM 调用或飞书发送。
+
 ## 6. 查询窗口、命中与去重规则
 
 ### 6.1 窗口模式
@@ -237,10 +249,12 @@ ORDER BY <window_field> ASC
 4. 调度器按计划触发框架通用 runner。
 5. runner 读取 `jira-scheduled-query-alert` 的场景接入实现。
 6. 查询 runtime 将 `base_jql` 与运行窗口组合成最终 JQL。
-7. 通用 Jira 运行时执行查询并返回结果。
-8. 场景归一化逻辑整理字段。
-9. 通用去重逻辑过滤已发送记录。
-10. 如有命中：
+7. 通用 Jira 运行时执行查询，只返回 Jira key 与窗口身份字段。
+8. 场景根据 key、created/updated 或 base_jql_hash 生成去重键。
+9. 通用去重逻辑过滤已发送记录，并按 `notify_policy.max_issues_per_run` 截断。
+10. 如有新命中：
+    - 调用 `active-jira` 能力按 Jira key 拉取详情。
+    - 场景归一化逻辑整理卡片字段。
     - 调用 LLM 生成受控轻量分析。
     - 交给场景模板渲染器生成 `lark-jira-query-alert-card-v1`。
     - 由通用投递层发送 interactive 卡片。

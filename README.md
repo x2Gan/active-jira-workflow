@@ -36,6 +36,14 @@
 
 `active-jira-automation` 用于把用户确认过的 Jira 筛选条件保存为自动化任务。首期场景为 `jira-scheduled-query-alert`：Agent 先把自然语言筛选目标整理成可审计的 `query_spec` 和不含运行窗口的 `base_jql`，确认 `window_mode`、调度和飞书群后，再由 runner 定时查询并发送 interactive 卡片。
 
+运行期采用两段式管线：定时查询阶段只输出 Jira key 与窗口去重所需的 `created_at/updated_at`，通过去重和 `max_issues_per_run` 后，再按 key 调用 active-jira/本地 `jira issue view <KEY> --raw` 拉取卡片字段。
+
+真实 Jira 联调时，runner 可使用本地 JiraCLI：
+
+```bash
+python active-jira-automation/scripts/run_automation_task.py <TASK_ID> --jira-bin jira --dry-run
+```
+
 创建任务前必须确认：
 
 - `base_jql`：只包含业务筛选条件，不包含运行期 created/updated 窗口。
